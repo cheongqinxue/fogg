@@ -22,7 +22,7 @@ thinking two steps ahead.
 
 I guess thats where this agent comes in. Its your butler and travel agent. Im not that ambitious -
 for starters its not going to be this amazing thing on your phone that helps you rebook your 
-itinerary everytime theres an issue. For starters its going to be a smart suggestion machine. And 
+itinerary everytime theres an issue. Its just a smart suggestion machine. And 
 your decisions to follow or not will give it clues about your preferences.
 
 Note: I dont know why I chose that photo. It just evoked a sense of freedom in me to see a single
