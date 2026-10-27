@@ -1,4 +1,5 @@
 # Local project ignores
+tools/google-maps-api-spec/node_modules/
 .venv
 wandb
 .data
