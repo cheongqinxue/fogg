@@ -15,7 +15,21 @@ from gmaps.quota.caps import SKU_FREE_CAP
 from gmaps.quota.store import RedisUsageStore
 from gmaps.quota.types import BillableEvent
 from gmaps.redis_client import set_redis_client
-from gmaps.requests import PlacesTextSearchRequest, QuotaBalance
+from gmaps.requests import (
+    DirectionsRequest,
+    GeocodeRequest,
+    PlacesAutocompleteRequest,
+    PlacesGetRequest,
+    PlacesSearchNearbyRequest,
+    PlacesTextSearchRequest,
+    QuotaBalance,
+    RoutesComputeRouteMatrixRequest,
+    RoutesComputeRoutesRequest,
+)
+from gmaps.requests.places import Circle, LocationRestriction
+from gmaps.requests.routes import Location, RouteMatrixWaypoint, Waypoint
+from gmaps.requests.sku import BillableSKU
+from gmaps.requests._google_json import LatLng
 from gmaps.requests.base import (
     close_http_client,
     get_http_client,
@@ -281,6 +295,163 @@ async def test_max_retries_from_env(
     with pytest.raises(GoogleMapsApiError):
         await req.call()
     assert calls["n"] == 3
+
+
+def _tokyo_osaka_routes() -> tuple[Waypoint, Waypoint]:
+    origin = Waypoint(address="Tokyo Station, Japan")
+    destination = Waypoint(address="Osaka Station, Japan")
+    return origin, destination
+
+
+def _sample_requests() -> list[tuple[str, object, dict[str, object]]]:
+    """HTTP method, request instance, mock JSON body."""
+    latlng = LatLng(latitude=35.681, longitude=139.767)
+    circle = Circle(center=latlng, radius=1000.0)
+    origin, destination = _tokyo_osaka_routes()
+    matrix_origin = RouteMatrixWaypoint(waypoint=origin)
+    matrix_dest = RouteMatrixWaypoint(waypoint=destination)
+    return [
+        (
+            "post",
+            PlacesTextSearchRequest(field_mask="places.id", text_query="coffee"),
+            {"places": []},
+        ),
+        (
+            "post",
+            PlacesSearchNearbyRequest(
+                field_mask="places.id",
+                location_restriction=LocationRestriction(circle=circle),
+                included_types=["cafe"],
+            ),
+            {"places": []},
+        ),
+        (
+            "post",
+            PlacesAutocompleteRequest(field_mask="suggestions.placePrediction", input="coff"),
+            {"suggestions": []},
+        ),
+        (
+            "get",
+            PlacesGetRequest(field_mask="places.id", place_id="ChIJN1t_tDeuEmsRUsoyG83frY4"),
+            {"id": "ChIJN1t_tDeuEmsRUsoyG83frY4"},
+        ),
+        (
+            "post",
+            RoutesComputeRoutesRequest(
+                field_mask="routes.duration",
+                origin=origin,
+                destination=destination,
+            ),
+            {"routes": []},
+        ),
+        (
+            "post",
+            RoutesComputeRouteMatrixRequest(
+                field_mask="routes.duration",
+                origins=[matrix_origin],
+                destinations=[matrix_dest],
+            ),
+            {"routes": []},
+        ),
+        (
+            "get",
+            GeocodeRequest(address="1600 Amphitheatre Parkway"),
+            {"results": []},
+        ),
+        (
+            "get",
+            DirectionsRequest(origin="Tokyo", destination="Osaka"),
+            {"routes": []},
+        ),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("http_method", "request_instance", "response_json"),
+    _sample_requests(),
+    ids=[
+        "places_text_search",
+        "places_search_nearby",
+        "places_autocomplete",
+        "places_get",
+        "routes_compute_routes",
+        "routes_compute_route_matrix",
+        "geocode",
+        "directions",
+    ],
+)
+@pytest.mark.asyncio
+async def test_each_request_class_call(
+    env: None,
+    monkeypatch: pytest.MonkeyPatch,
+    http_method: str,
+    request_instance: object,
+    response_json: dict[str, object],
+) -> None:
+    """Every public request class completes call() against mocked HTTP."""
+    calls = {"n": 0}
+
+    async def fake_post(*_args, **_kwargs):
+        calls["n"] += 1
+        request = httpx.Request("POST", "https://example.com")
+        return httpx.Response(200, request=request, json=response_json)
+
+    async def fake_get(*_args, **_kwargs):
+        calls["n"] += 1
+        request = httpx.Request("GET", "https://example.com")
+        return httpx.Response(200, request=request, json=response_json)
+
+    client = get_http_client()
+    if http_method == "post":
+        monkeypatch.setattr(client, "post", fake_post)
+    else:
+        monkeypatch.setattr(client, "get", fake_get)
+
+    result = await request_instance.call()  # type: ignore[attr-defined]
+    assert result == response_json
+    assert calls["n"] == 1
+
+
+@pytest.mark.parametrize(
+    ("request_instance", "expected_sku"),
+    [
+        (
+            PlacesTextSearchRequest(field_mask="places.id", text_query="x"),
+            BillableSKU.PLACES_TEXT_SEARCH_PRO,
+        ),
+        (
+            PlacesAutocompleteRequest(field_mask="suggestions.placePrediction", input="a"),
+            BillableSKU.PLACES_AUTOCOMPLETE,
+        ),
+        (
+            GeocodeRequest(address="Paris"),
+            BillableSKU.GEOCODING,
+        ),
+        (
+            RoutesComputeRouteMatrixRequest(
+                field_mask="routes.duration",
+                origins=[RouteMatrixWaypoint(waypoint=Waypoint(address="A"))],
+                destinations=[RouteMatrixWaypoint(waypoint=Waypoint(address="B"))],
+            ),
+            BillableSKU.ROUTES_MATRIX_ESSENTIALS,
+        ),
+    ],
+)
+def test_billable_sku_on_subclass(request_instance: object, expected_sku: BillableSKU) -> None:
+    assert request_instance.billable_sku == expected_sku  # type: ignore[attr-defined]
+
+
+def test_route_matrix_bills_element_count() -> None:
+    origin, destination = _tokyo_osaka_routes()
+    req = RoutesComputeRouteMatrixRequest(
+        field_mask="routes.duration",
+        origins=[
+            RouteMatrixWaypoint(waypoint=origin),
+            RouteMatrixWaypoint(waypoint=Waypoint(address="Yokohama")),
+        ],
+        destinations=[RouteMatrixWaypoint(waypoint=destination)],
+    )
+    assert req._billable_for_attempt() == [(BillableSKU.ROUTES_MATRIX_ESSENTIALS, 2)]
 
 
 @pytest.mark.asyncio

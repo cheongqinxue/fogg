@@ -22,7 +22,7 @@ def test_places_search_overhead(
     benchmark_scenario: Scenario,
     benchmark_event_loop: asyncio.AbstractEventLoop,
 ) -> None:
-    """End-to-end ``places_search_text`` without real Google latency."""
+    """End-to-end ``PlacesTextSearchRequest.call()`` without real Google latency."""
     harness = GmapsBenchmarkHarness(benchmark_scenario)
     benchmark_event_loop.run_until_complete(harness.setup())
 

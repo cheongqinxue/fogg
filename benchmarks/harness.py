@@ -75,7 +75,7 @@ class GmapsBenchmarkHarness:
         reset_usage_store_for_tests()
 
     async def invoke_once(self) -> dict[str, Any]:
-        """One end-to-end ``PlacesTextSearchRequest.call()``."""
+        """One end-to-end ``PlacesTextSearchRequest.call()`` (mocked HTTP)."""
         await self._prepare_iteration()
         return await DEFAULT_REQUEST.call()
 

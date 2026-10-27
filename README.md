@@ -32,9 +32,8 @@ road set against a wide clear landscape.
 
 ### 2026-10-27 — In-process Google Maps client
 
-- Added **`gmaps`**, an async in-process client for Google Maps Platform: validated Pydantic requests, raw Google JSON responses, and **`@gmaps_tracked_api`** for local quota counters (Redis, SKU heuristics aligned with free-tier docs).
-- Implemented **transport** with **tenacity** retries (429 / 5xx / network only, exponential backoff + jitter, max 5 retries), structured **logging** on each retry and on exhaustion, and **Redis caching** of successful responses.
-- Removed the separate **HTTP proxy**; FOGG calls Google from the app via `gmaps.client` helpers (`places_*`, `routes_*`, `geocode`, `directions`, `get_quota_usage`).
-- Documented usage in **`docs/gmaps-client.md`** and billing/API reference under **`docs/`** (free tier, OpenAPI snapshots, Swagger serve script).
-- **Tests**: client + quota (fakeredis), transport retry/cache, and explicit **caplog** coverage for retry and failure logging.
-- **`benchmarks/`**: mocked Google HTTP (no quota spend), **overhead** scenarios (0 ms latency) for regression tracking, optional **simulated Google** latency group, **pytest-benchmark** + `uv run python -m benchmarks` CLI with JSON export. 
+- Added **`gmaps`**: each Google operation is a **`GoogleMapRequest`** subclass (Pydantic + `call()` / `check_quota()` → `QuotaBalance` with **used** and **balance**).
+- **Cache**, **quota** (Redis, per-HTTP-attempt billing), and **retry** (tenacity in `requests.base`, tuned via **`GMAPS_REQUESTS_BASE_*`**) live on the base class; SKUs are declared on each request type.
+- Eight public request classes (Places, Routes, legacy Geocoding/Directions). See **`docs/gmaps-client.md`** and **`AGENTS.md`** (repo map for agents).
+- **Tests**: `tests/test_requests.py` (all request classes + quota/retry/cache; fakeredis).
+- **`benchmarks/`**: mocked HTTP via `PlacesTextSearchRequest`, overhead vs simulated latency, `python -m benchmarks` CLI. 
