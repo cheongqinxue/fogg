@@ -2,7 +2,7 @@
 name: python-code-review
 description: >-
   Review all Python in the repo against global coding rules (.mdc) and project .cursor/rules.
-  Produces or updates docs/REPOINDEX.md and docs/CODEREVIEW.md. Use for periodic Python health
+  Produces or updates AGENTS.md at repo root; findings go in the review reply. Use for periodic Python health
   checks, pre-PR review, or when the user asks for a python code review (including legacy
   "agents-python-review" requests).
 ---
@@ -28,13 +28,13 @@ Discover Python from the repo root. **Include** (when present):
 
 **Exclude:** `.venv/`, `**/__pycache__/`, vendored third party, generated code unless the user asks.
 
-If the user names a narrower scope (e.g. `src/gmaps/` only), honor it but note the reduced scope in `docs/CODEREVIEW.md`.
+If the user names a narrower scope (e.g. `src/gmaps/` only), honor it and note the reduced scope in the review reply and `AGENTS.md` if updated.
 
 ---
 
 ## Global rules to enforce
 
-Cursor **skills do not auto-load** `.mdc` rule files. You must **read** the files in step 0 and record that in `docs/CODEREVIEW.md`.
+Cursor **skills do not auto-load** `.mdc` rule files. You must **read** the files in step 0 and record that in the review reply (Global standards checklist).
 
 Also read **project-local** rules when they exist: `.cursor/rules/*.mdc` (e.g. collaboration, project-specific security).
 
@@ -57,7 +57,7 @@ Tag findings as `<rule-id>/…` (see template below).
 | **fastapi-standards** | `~/.cursor/rules/fastapi-standards.mdc` (only if FastAPI routes exist under scope) |
 | **collaboration** | `<repo>/.cursor/rules/collaboration.mdc`, else `~/.cursor/rules/` if duplicated |
 
-In **`docs/CODEREVIEW.md`**, start with a **Global standards checklist** listing each file as **read** and bullet what you applied (type hints, docstrings, pytest, tenacity, secrets, logging). Mark **deferred** with reason (e.g. no FastAPI in repo).
+Start the review reply with a **Global standards checklist** listing each rule file as **read** and bullet what you applied (type hints, docstrings, pytest, tenacity, secrets, logging). Mark **deferred** with reason (e.g. no FastAPI in repo).
 
 Optional tooling (note pass/fail in checklist):
 
@@ -71,7 +71,7 @@ If `ruff` is missing, say so and rely on manual review against **python-standard
 
 ### 1. Index the tree
 
-Survey Python layout under scope. Document in **[`docs/REPOINDEX.md`](../../../docs/REPOINDEX.md)**:
+Survey Python layout under scope. Document in **[`AGENTS.md`](../../../AGENTS.md)** at the repo root:
 
 - Package names, main modules, entrypoints (`__main__.py`, CLI in `pyproject.toml`)
 - Test layout and how to run (`uv run pytest …`)
@@ -114,9 +114,7 @@ Minimum **python-standards** pass:
 
 ### 4. Write findings
 
-Append or replace content in **[`docs/CODEREVIEW.md`](../../../docs/CODEREVIEW.md)**.
-
-Use one `#` heading per source file (path from repo root). Group multiple issues under the same file.
+Report findings in the **review reply** (structured markdown). Use one `##` heading per source file (path from repo root). Group multiple issues under the same file.
 
 **Entry template:**
 
@@ -158,7 +156,7 @@ If **no violations**, write a dated summary stating clean review and listing sco
 
 ### 5. Do not auto-fix
 
-**Review-only** unless the user explicitly asks to implement fixes. Do not commit `docs/CODEREVIEW.md` unless the user asks.
+**Review-only** unless the user explicitly asks to implement fixes. Update **`AGENTS.md`** when layout or entrypoints change; do not commit unless the user asks.
 
 ---
 

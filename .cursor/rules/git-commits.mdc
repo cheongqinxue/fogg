@@ -1,0 +1,82 @@
+---
+description: Git commit message format and when to commit (Conventional Commits)
+alwaysApply: true
+---
+
+# Git commits
+
+## Message format
+
+Use **[Conventional Commits](https://www.conventionalcommits.org/)** with a **type**, optional **scope**, and **imperative** subject:
+
+```
+<type>: <short summary in lowercase after the colon>
+
+Optional body paragraph(s) explaining why, not a file list.
+```
+
+### Types (FOGG)
+
+| Type | Use for |
+|------|---------|
+| **feat** | New user- or integrator-facing behavior (e.g. new `gmaps` API, agent capability) |
+| **chore** | Tooling, deps, CI, docs, tests, benchmarks, Cursor rules/skills, refactors with no behavior change |
+| **fix** | Bug fixes |
+| **docs** | Documentation-only changes (optional; `chore:` is fine if you prefer two types only) |
+| **test** | Test-only changes (optional; `chore:` is acceptable) |
+
+Prefer **`feat:`** vs **`chore:`** by intent: if the commit introduces something callers rely on, use **`feat:`**; otherwise **`chore:`**.
+
+**Scope** (optional): `feat(gmaps): …`, `chore(docs): …` — use when it clarifies a large repo.
+
+### Subject line
+
+- One line, ~72 characters or less when possible
+- Imperative mood: “add”, “fix”, “remove” — not “added” or “adds”
+- No trailing period
+- No ticket IDs required unless the team adopts them later
+
+### Body
+
+- Separate from subject with a blank line
+- Explain **why** and high-level **what**; avoid pasting full file lists
+- Complete sentences
+
+### Examples
+
+```
+feat: add in-process gmaps client with quota, cache, and transport
+
+Pydantic request models, Redis usage tracking with Lua enforcement,
+tenacity retries, and response caching.
+```
+
+```
+chore: add pytest coverage for gmaps client and quota enforcement
+```
+
+```
+fix: refund reserved quota when Google call fails after Lua reserve
+```
+
+## Commit practice
+
+- **Split logically**: one concern per commit (scaffold, feature, tests, docs, tooling)
+- **Do not commit** `.env`, secrets, credentials, or large generated artifacts unless explicitly intended and safe
+- **Only commit when the user asks** — do not proactively commit work
+- Use a HEREDOC for multi-line messages:
+
+```bash
+git commit -m "$(cat <<'EOF'
+chore: add uv project scaffold and environment template
+
+Introduce hatchling packaging and .env-template for local dev.
+EOF
+)"
+```
+
+## Do not
+
+- Force-push `master`/`main` without explicit user request
+- `--no-verify` or skip hooks unless the user asks
+- `git commit --amend` unless user rules allow (unpushed commit you created, etc.)
