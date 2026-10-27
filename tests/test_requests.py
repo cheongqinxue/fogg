@@ -1,6 +1,5 @@
 """Tests for GoogleMapRequest subclasses (cache, quota, retry)."""
 
-import json
 import logging
 
 import httpx
@@ -27,7 +26,7 @@ from gmaps.requests import (
     RoutesComputeRoutesRequest,
 )
 from gmaps.requests.places import Circle, LocationRestriction
-from gmaps.requests.routes import Location, RouteMatrixWaypoint, Waypoint
+from gmaps.requests.routes import RouteMatrixWaypoint, Waypoint
 from gmaps.requests.sku import BillableSKU
 from gmaps.requests._google_json import LatLng
 from gmaps.requests.base import (
@@ -65,6 +64,7 @@ async def test_places_text_search_returns_json(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Successful call returns Google JSON unchanged."""
+
     async def fake_post(*_args, **_kwargs):
         request = httpx.Request("POST", "https://example.com")
         return httpx.Response(200, request=request, json={"places": []})

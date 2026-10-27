@@ -56,3 +56,7 @@ Variables use **module namespaces** (see comments in `.env-template`).
 | `GMAPS_REQUESTS_BASE_RETRY_WAIT_MAX_SECONDS` | `requests.base` | `60` |
 
 See `.env-template` for the full list.
+
+## Domain alignment
+
+FOGG **trip / itinerary / destination** concepts are not Google types. Mapping to **Place**, **Waypoint**, **Route**, **RouteLeg**, and Geocoding results: **[google-maps-alignment.md](google-maps-alignment.md)**.

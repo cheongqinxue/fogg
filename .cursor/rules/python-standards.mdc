@@ -11,9 +11,9 @@ General Python conventions. For FastAPI router, schema, and API-layer code, see 
 ## Project structure
 
 - Separate directories for source code, tests, docs, and config
-- Place source under `src/<package_name>/` and tests under `./tests/`
+- Place source under `backend/<package_name>/` and tests under `./tests/`
 - Modular design: distinct files/modules for models, services, controllers, and utilities
-- Add `__init__.py` when creating packages under `./tests/` or `./src/<package_name>/`
+- Add `__init__.py` when creating packages under `./tests/` or `./backend/<package_name>/`
 
 ## Style & formatting
 
@@ -128,4 +128,3 @@ PII and secrets in logs are covered by **`security-standards.mdc`**. Apply these
 
 - Include `job_id`, `attempt`, and queue/task name in worker logs
 - In Lambda/Cloud Functions: configure logging outside the handler; log start, end, and duration inside the handler
-

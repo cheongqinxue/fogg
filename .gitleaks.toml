@@ -1,0 +1,7 @@
+# Gitleaks config — extend allowlists if a hook flags a known false positive.
+# Docs: https://github.com/gitleaks/gitleaks#configuration
+
+title = "fogg gitleaks"
+
+[extend]
+useDefault = true

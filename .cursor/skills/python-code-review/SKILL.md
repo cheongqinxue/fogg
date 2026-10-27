@@ -19,7 +19,7 @@ Discover Python from the repo root. **Include** (when present):
 
 | Path | Typical role |
 |------|----------------|
-| `src/` | Installable packages (e.g. `src/gmaps/`) |
+| `backend/` | Installable packages (e.g. `backend/gmaps/`) |
 | `tests/` | pytest suite |
 | `benchmarks/` | Performance / regression harness |
 | `scripts/` | CLI and maintenance scripts |
@@ -28,7 +28,7 @@ Discover Python from the repo root. **Include** (when present):
 
 **Exclude:** `.venv/`, `**/__pycache__/`, vendored third party, generated code unless the user asks.
 
-If the user names a narrower scope (e.g. `src/gmaps/` only), honor it and note the reduced scope in the review reply and `AGENTS.md` if updated.
+If the user names a narrower scope (e.g. `backend/gmaps/` only), honor it and note the reduced scope in the review reply and `AGENTS.md` if updated.
 
 ---
 
@@ -63,8 +63,8 @@ Optional tooling (note pass/fail in checklist):
 
 ```bash
 # Paths = discovered scope roots, space-separated
-uv run ruff check src tests benchmarks scripts agents tools --statistics
-uv run ruff format src tests benchmarks scripts agents tools --check --diff
+uv run ruff check backend tests benchmarks scripts agents tools --statistics
+uv run ruff format backend tests benchmarks scripts agents tools --check --diff
 ```
 
 If `ruff` is missing, say so and rely on manual review against **python-standards.mdc**.
@@ -82,7 +82,7 @@ Create the file if missing; update on structural changes.
 
 ### 2. Optional: agents harness boundaries
 
-**Only if** the repo has `agents/` **and**  
+**Only if** the repo has `agents/` **and**
 `.cursor/skills/agents-harness-conventions/scripts/agents_layout.sh`:
 
 ```bash
@@ -119,7 +119,7 @@ Report findings in the **review reply** (structured markdown). Use one `##` head
 **Entry template:**
 
 ```markdown
-# path/from/repo/root/src/...
+# path/from/repo/root/backend/...
 
 ## Line XX: <rule-id>/<short title>
 Correction urgency: xhigh | high | moderate | low
@@ -162,6 +162,6 @@ If **no violations**, write a dated summary stating clean review and listing sco
 
 ## Scope reminders
 
-- Default: **all project Python** under `src/`, `tests/`, `benchmarks/`, `scripts/`, `tools/`, `agents/`.
+- Default: **all project Python** under `backend/`, `tests/`, `benchmarks/`, `scripts/`, `tools/`, `agents/`.
 - Nested experiment scaffolding (qlab-style) is optional; use **agents-harness-conventions** only when that tree exists.
 - Do not review unrelated repos unless the user specifies a path.

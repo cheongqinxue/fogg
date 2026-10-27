@@ -21,19 +21,16 @@ repos:
       args: ["--fix"] # Automatically fix simple linting issues
       name: Python Linting (Ruff Check)
 
-# - repo: local
-#   hooks:
-#     - id: run-unit-tests-via-script
-#       name: Run Pytest Unit Tests (via Script)
-#       entry: bash
-#       language: system
-#       args:
-#         - -c
-#         - |
-#           export PYTHONPATH=$PYTHONPATH:.
-#           pytest
-#       types: [python]
-#       files: ^(src/.*|\.py$|requirements\.txt)$
-#       pass_filenames: false
-#       # additional_dependencies is NOT needed here,
-#       # but 'pytest' must be installed in your active environment!
+- repo: local
+  hooks:
+    - id: gitleaks
+      name: Detect secrets in staged changes (gitleaks)
+      entry: scripts/gitleaks-staged.sh
+      language: system
+      pass_filenames: false
+    - id: pytest-unit
+      name: pytest (unit tests only)
+      entry: scripts/pytest-unit.sh
+      language: system
+      pass_filenames: false
+      always_run: true

@@ -9,6 +9,6 @@ description: >-
 
 This skill was replaced by **[python-code-review](../python-code-review/SKILL.md)**.
 
-Read and follow **`python-code-review/SKILL.md`** for all Python in the repo (`src/`, `tests/`, `benchmarks/`, `scripts/`, `agents/`, `tools/`).
+Read and follow **`python-code-review/SKILL.md`** for all Python in the repo (`backend/`, `tests/`, `benchmarks/`, `scripts/`, `agents/`, `tools/`).
 
 Output: **`AGENTS.md`** (findings in the review reply).
