@@ -1,0 +1,9 @@
+{
+  "name": "fogg-google-maps-api-spec",
+  "private": true,
+  "description": "Convert Google Discovery documents to OpenAPI for FOGG local docs",
+  "dependencies": {
+    "google-discovery-to-swagger": "^2.1.0",
+    "swagger2openapi": "^7.0.8"
+  }
+}
