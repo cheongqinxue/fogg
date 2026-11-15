@@ -23,7 +23,7 @@ Discover Python from the repo root. **Include** (when present):
 | `tests/` | pytest suite |
 | `benchmarks/` | Performance / regression harness |
 | `scripts/` | CLI and maintenance scripts |
-| `agents/` | Agent experiments and harness (optional) |
+| `agent/` | LangGraph harness (optional) |
 | `tools/` | Dev tooling |
 
 **Exclude:** `.venv/`, `**/__pycache__/`, vendored third party, generated code unless the user asks.
@@ -82,7 +82,7 @@ Create the file if missing; update on structural changes.
 
 ### 2. Optional: agents harness boundaries
 
-**Only if** the repo has `agents/` **and**
+**Only if** the repo has `agent/` **and**
 `.cursor/skills/agents-harness-conventions/scripts/agents_layout.sh`:
 
 ```bash
@@ -90,9 +90,9 @@ bash .cursor/skills/agents-harness-conventions/scripts/agents_layout.sh list
 bash .cursor/skills/agents-harness-conventions/scripts/agents_layout.sh check-imports
 ```
 
-Cross-experiment `*_core` imports → at least **high** severity (`agents/import-boundary/…`).
+Cross-experiment `*_core` imports → at least **high** severity (`agent/import-boundary/…`).
 
-If the script or `agents/` is absent, skip this step and note **skipped** in the checklist.
+If the script or `agent/` is absent, skip this step and note **skipped** in the checklist.
 
 Read **[`agents-harness-conventions`](../agents-harness-conventions/SKILL.md)** when reviewing qlab-style multi-experiment trees.
 
@@ -142,7 +142,7 @@ Correction urgency: xhigh | high | moderate | low
 | `python-standards/…` | Types, docstrings, ruff-style |
 | `python-tests/…` | pytest layout, fixtures, isolation |
 | `fastapi-standards/…` | Routers, schemas, DI |
-| `agents/import-boundary/…` | Cross-experiment imports (when agents harness present) |
+| `agent/import-boundary/…` | Cross-experiment imports (when agent harness present) |
 | `collaboration/…` | Process only when relevant |
 
 **Urgency:**
@@ -162,6 +162,6 @@ If **no violations**, write a dated summary stating clean review and listing sco
 
 ## Scope reminders
 
-- Default: **all project Python** under `backend/`, `tests/`, `benchmarks/`, `scripts/`, `tools/`, `agents/`.
+- Default: **all project Python** under `backend/`, `tests/`, `benchmarks/`, `scripts/`, `tools/`, `agent/`.
 - Nested experiment scaffolding (qlab-style) is optional; use **agents-harness-conventions** only when that tree exists.
 - Do not review unrelated repos unless the user specifies a path.

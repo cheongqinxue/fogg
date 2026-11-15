@@ -1,0 +1,16 @@
+---
+description: Keep assistant replies compact (prose and spacing)
+alwaysApply: true
+---
+
+# Compact replies
+
+When answering in chat (questions, design discussion, reviews):
+
+- **Length:** Prefer short, direct answers. One tight paragraph often enough; expand only when the user asks or the task needs it.
+- **Spacing:** At most one blank line between sections. No large gaps between list items. Avoid “wall of whitespace.”
+- **Structure:** Use small lists over multi-section essays. Skip wide tables unless the user needs comparison or many columns.
+- **Bold/formatting:** Use sparingly — not every term.
+- **Code citations:** Still use required `startLine:endLine:path` when referencing repo code; keep surrounding prose minimal.
+
+Implementation tasks (steps, diffs, commit messages) stay complete and precise; compact does not mean omitting safety-critical detail.

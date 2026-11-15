@@ -35,5 +35,5 @@ road set against a wide clear landscape.
 - Added **`gmaps`**: each Google operation is a **`GoogleMapRequest`** subclass (Pydantic + `call()` / `check_quota()` → `QuotaBalance` with **used** and **balance**).
 - **Cache**, **quota** (Redis, per-HTTP-attempt billing), and **retry** (tenacity in `requests.base`, tuned via **`GMAPS_REQUESTS_BASE_*`**) live on the base class; SKUs are declared on each request type.
 - Eight public request classes (Places, Routes, legacy Geocoding/Directions). See **`docs/gmaps-client.md`** and **`AGENTS.md`** (repo map for agents).
-- **Tests**: `tests/test_requests.py` (all request classes + quota/retry/cache; fakeredis).
+- **Tests**: `agent/tests/test_requests.py` (all request classes + quota/retry/cache; fakeredis).
 - **`benchmarks/`**: mocked HTTP via `PlacesTextSearchRequest`, overhead vs simulated latency, `python -m benchmarks` CLI.
