@@ -1,17 +1,16 @@
 #!/usr/bin/env bash
-# Bootstrap FOGG dev tools into .tools/ (isolated from system Python, uv, Flutter).
+# Bootstrap FOGG Python dev tools into .tools/ (isolated from system Python/uv).
 # Does not modify ~/.bashrc or global installs. Re-run safely.
 #
 # Usage:
 #   ./setup.sh
-#   source .tools/env.sh    # then: uv run pytest, flutter run, etc.
+#   source .tools/env.sh    # then: uv run pytest, etc.
 
 set -euo pipefail
 
 FOGG_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TOOLS_DIR="${FOGG_ROOT}/.tools"
 UV_DIR="${TOOLS_DIR}/uv"
-FLUTTER_DIR="${TOOLS_DIR}/flutter"
 PYTHON_MANAGED_DIR="${TOOLS_DIR}/python"
 UV_CACHE_DIR="${TOOLS_DIR}/uv-cache"
 ENV_FILE="${TOOLS_DIR}/env.sh"
@@ -21,10 +20,6 @@ PYTHON_VERSION="${FOGG_PYTHON_VERSION:-3.13}"
 
 log() {
   printf '==> %s\n' "$*"
-}
-
-warn() {
-  printf 'warning: %s\n' "$*" >&2
 }
 
 die() {
@@ -44,11 +39,9 @@ write_env_file() {
 #   source .tools/env.sh
 FOGG_ROOT='${FOGG_ROOT}'
 export FOGG_ROOT
-export PATH='${UV_DIR}:${FLUTTER_DIR}/bin:'"\${PATH}"
+export PATH='${UV_DIR}:'"\${PATH}"
 export UV_PYTHON_INSTALL_DIR='${PYTHON_MANAGED_DIR}'
 export UV_CACHE_DIR='${UV_CACHE_DIR}'
-export FLUTTER_ROOT='${FLUTTER_DIR}'
-export PUB_CACHE='${TOOLS_DIR}/pub-cache'
 EOF
 }
 
@@ -84,36 +77,6 @@ sync_backend() {
   "${UV_DIR}/uv" sync --extra dev --python "${PYTHON_VERSION}"
 }
 
-install_flutter() {
-  local flutter_bin="${FLUTTER_DIR}/bin/flutter"
-  if [[ -x "${flutter_bin}" ]]; then
-    log "Flutter already present at ${FLUTTER_DIR} ($("${flutter_bin}" --version | head -1))"
-    return 0
-  fi
-  require_cmd git
-  log "Cloning Flutter (stable) into ${FLUTTER_DIR} — this may take a few minutes"
-  git clone https://github.com/flutter/flutter.git -b stable --depth 1 "${FLUTTER_DIR}"
-  [[ -x "${flutter_bin}" ]] || die "Flutter clone failed: ${flutter_bin} not found"
-}
-
-bootstrap_flutter() {
-  export PATH="${FLUTTER_DIR}/bin:${PATH}"
-  export FLUTTER_ROOT="${FLUTTER_DIR}"
-  export PUB_CACHE="${TOOLS_DIR}/pub-cache"
-  mkdir -p "${PUB_CACHE}"
-
-  log "Flutter precache (web + Linux host tools)"
-  "${FLUTTER_DIR}/bin/flutter" config --no-analytics >/dev/null 2>&1 || true
-  "${FLUTTER_DIR}/bin/flutter" precache --web
-
-  log "Resolving frontend packages"
-  cd "${FOGG_ROOT}/frontend"
-  "${FLUTTER_DIR}/bin/flutter" pub get
-
-  log "Flutter doctor (informational)"
-  "${FLUTTER_DIR}/bin/flutter" doctor || warn "flutter doctor reported issues; you may still run web builds."
-}
-
 install_gitleaks() {
   local gitleaks_bin="${TOOLS_DIR}/gitleaks/gitleaks"
   if [[ -x "${gitleaks_bin}" ]]; then
@@ -144,8 +107,6 @@ main() {
 
   install_managed_python
   sync_backend
-  install_flutter
-  bootstrap_flutter
   install_gitleaks
   install_pre_commit_hooks
 
@@ -156,7 +117,8 @@ main() {
   printf '\n'
   printf 'Then try:\n'
   printf '  uv run pytest tests/\n'
-  printf '  cd frontend && flutter run -d chrome\n'
+  printf '  cd frontend/svelte && npm install && npm run dev\n'
+  printf '  # Frontend setup requires Node.js 20+ and npm on the host.\n'
   printf '  uv run pre-commit run --all-files   # optional manual check\n'
   printf '\n'
   printf 'Project-local installs live under %s (safe to delete to reset).\n' "${TOOLS_DIR}"
