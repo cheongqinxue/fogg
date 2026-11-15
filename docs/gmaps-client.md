@@ -24,8 +24,6 @@ quota = await req.check_quota()  # QuotaBalance(used=..., balance=...)
 | `PlacesGetRequest` | Place details |
 | `RoutesComputeRoutesRequest` | Routes computeRoutes |
 | `RoutesComputeRouteMatrixRequest` | Route matrix |
-| `GeocodeRequest` | Geocoding (legacy) |
-| `DirectionsRequest` | Directions (legacy) |
 
 Each class declares **billable SKUs and units** in `_billable_for_attempt()` (not inferred from URL paths). `billable_sku` is the primary SKU for `check_quota()`.
 
@@ -59,4 +57,4 @@ See `.env-template` for the full list.
 
 ## Domain alignment
 
-FOGG **trip / itinerary / destination** concepts are not Google types. Mapping to **Place**, **Waypoint**, **Route**, **RouteLeg**, and Geocoding results: **[google-maps-alignment.md](google-maps-alignment.md)**.
+FOGG **trip / itinerary / activity / place** concepts are not Google API object names. Mapping to Google **Place**, **Waypoint**, **Route**, and **RouteLeg**: **[google-maps-alignment.md](google-maps-alignment.md)**.

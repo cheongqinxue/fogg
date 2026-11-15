@@ -69,8 +69,8 @@ Cross-reference between [user journeys](user-journeys.md) and [workspace frames]
 | Step | Intent | Frames | Notes |
 |------|--------|--------|-------|
 | 5.1 | Pre-trip dashboard | ⚠️ **Gap** | Countdown, missing docs, open bookings—no `pre_trip_summary` frame. |
-| 5.2 | Enable watches | `alert_config` **P** | |
-| 5.3 | 48h weather review | `alerts` **P**, `map` **S**, `diagram` **S** | Impact tags; map for geography. |
+| 5.2 | Enable monitors / reminders | `reminder_config` **P** | |
+| 5.3 | 48h weather review | `reminders` **P**, `map` **S**, `diagram` **S** | Impact tags; map for geography. |
 | 5.4 | Accept/dismiss hints | **(C)**, `interactive_form` **S** | Preference signals. |
 | — | Packing | `packing_list` **P**, `todo_traveler` **S** | Overlap—see redundancies. |
 
@@ -87,8 +87,8 @@ Cross-reference between [user journeys](user-journeys.md) and [workspace frames]
 
 | Step | Intent | Frames | Notes |
 |------|--------|--------|-------|
-| 7.1 | Alert received | `alerts` **P**, **(C)** **P** | Push opens session; narrative in chat. |
-| 7.2 | Impact detail | `alerts` **P**, `trip_timeline` **P**, `diagram` **S** | Knock-on conflicts. |
+| 7.1 | Reminder/monitor surfaces | `reminders` **P**, **(C)** **P** | Push opens session; narrative in chat. |
+| 7.2 | Impact detail | `reminders` **P**, `trip_timeline` **P**, `diagram` **S** | Knock-on conflicts. |
 | 7.3 | Alternatives | `interactive_form` **P**, `map` **S**, `diagram` **P** | 2–3 options with deltas. |
 | 7.4 | Commit choice | `interactive_form` **P**, `agent_tasks` **S** | Replan + booking tasks. |
 | 7.5 | Dismiss | **(C)** **P** | Learning signal—no frame. |
@@ -119,12 +119,12 @@ Cross-reference between [user journeys](user-journeys.md) and [workspace frames]
 | `diagram` | P | P | — | — | S | — | P | — | medium |
 | `agent_tasks` | S | S | P | P | — | — | S | — | medium |
 | `file_deposit` | — | — | S | P | — | — | — | — | medium |
-| `alerts` | — | — | — | — | P | S | P | — | medium |
-| `alert_config` | — | — | — | — | P | — | S | — | low |
+| `reminders` | — | — | — | — | P | S | P | — | medium |
+| `reminder_config` | — | — | — | — | P | — | S | — | low |
 | `packing_list` | — | — | — | — | P | — | — | — | low |
 | `todo_traveler` | — | — | — | — | S | S | — | — | low |
 
-Frames with **no primary (P)** row in any journey step: `todo_traveler` (only S), `alert_config` (only P in J5—actually P in J5). `packing_list` only J5.
+Frames with **no primary (P)** row in any journey step: `todo_traveler` (only S), `reminder_config` (P in J5). `packing_list` only J5.
 
 ---
 
@@ -149,7 +149,7 @@ No gap: chat capabilities cover fork/revisit/search across edit and disruption j
 | **Trip list / switch trip** | J2, J8 | 2.1, 8.3 | **`trip_board`** (workspace frame) + **drawer**—same API; opened from dialogue (“show my trips”) or chrome. Dialogue-first, not menu-first. |
 | **Bookings board** | J3, J5 | 3.1, 3.4, 5.1 | New `bookings_board`: segments by booking status, PNR, cancel-by dates, external links. |
 | **Document vault (view)** | J4, J6 | 4.4, 4.5, 6.2 | Extend `file_deposit` with **Ingest \| Library** tabs *or* new `document_vault` frame. |
-| **Pre-trip summary** | J5 | 5.1 | New `pre_trip_summary`: countdown, gaps (no doc, no booking), watch status—or agent composes from multiple frames (heavier). |
+| **Pre-trip summary** | J5 | 5.1 | New `pre_trip_summary`: countdown, gaps (no doc, no booking), reminder/monitor status—or agent composes from multiple frames (heavier). |
 | *(resolved)* itinerary diff | J2 | 2.4 | **`diagram`** + `itinerary_diff`; versions in domain model. |
 | *(resolved)* today | J6 | 6.1 | **`trip_timeline`** + `scope: today`. |
 
@@ -164,10 +164,10 @@ No gap: chat capabilities cover fork/revisit/search across edit and disruption j
 | **Day schedule vs month grid** | `trip_timeline`, `calendar` | J2, J3, J5, J6, J7 | Keep both: timeline = **narrative order**, calendar = **time-grid edit**. Share one segment model. Consider **single frame** with view toggle (`list \| week`) later. |
 | **User checklists** | `todo_traveler`, `packing_list` | J5, J6 | **Merge:** `packing_list` as template/mode of `todo_traveler`, or one `checklist` frame with `kind: packing \| general`. |
 | **Comparison visuals** | `diagram`, `interactive_form` | J1, J7 | Not redundant: diagram = **read-only compare**; form = **commit choice**. Often shown together. |
-| **Alerts feed vs config** | `alerts`, `alert_config` | J5, J7 | Paired lifecycle—keep separate (monitor vs setup). |
+| **Reminders feed vs config** | `reminders`, `reminder_config` | J5, J7 | Due/active vs create/edit (one-shot vs monitor). |
 | **Ingest vs browse docs** | `file_deposit` only | J4 | **Split modes** inside one frame type before adding a second type. |
 | **Agent work vs user todos** | `agent_tasks`, `todo_traveler` | J3–J4 vs J5 | Keep separate—different trust model and cancel semantics. |
-| **Pre-trip dashboard vs composite** | (gap) vs alerts+timeline+deposit | J5 | Prefer **one** `pre_trip_summary` aggregating APIs over agent opening 4 frames every time. |
+| **Pre-trip dashboard vs composite** | (gap) vs reminders+timeline+deposit | J5 | Prefer **one** `pre_trip_summary` aggregating APIs over agent opening 4 frames every time. |
 
 ---
 
@@ -208,7 +208,7 @@ You do **not** build every frame at once. Suggested **conversation MVP** (one tr
 4. **`trip_board`** / drawer (same backend list)
 5. Agent emits frame ops over a single WebSocket
 
-Add **`bookings_board`**, **`document_vault`**, **`pre_trip_summary`**, **`alerts`** when their journeys (J3–J7) start. Deferred items stay payload tricks on existing frames.
+Add **`bookings_board`**, **`document_vault`**, **`pre_trip_summary`**, **`reminders`** when their journeys (J3–J7) start. Deferred items stay payload tricks on existing frames.
 
 
 ---

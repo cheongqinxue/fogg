@@ -2,7 +2,7 @@
 
 How we conceptualize the UI so **frontend**, **agent harness**, and **backend** stay aligned. All [user journeys](user-journeys.md) happen **through conversation with the agent**; maps, calendars, and forms are not separate “apps” but **frames** the agent opens in a shared workspace.
 
-**Status:** conceptual (pre-implementation). Bookings initiated purely in dialogue are **future**; this doc still defines the shell they must fit.
+**Status:** frame and workspace concepts remain future. The current browser implementation is a Svelte map/chat shell in `frontend/svelte/`; bookings initiated purely in dialogue are also future.
 
 ---
 
@@ -13,7 +13,7 @@ How we conceptualize the UI so **frontend**, **agent harness**, and **backend** 
 | **Dialogue primary** | User intent enters as messages; the agent responds with text **and** structured UI updates. **Every** complementary surface (drawer, frames, modals) is **invokable from dialogue**—“show my trips”, “open bookings board”—not only from chrome menus. |
 | **Persistent context** | Chat history + workspace state = resumable trip planning, not ephemeral chat. |
 | **Agent-driven layout** | The agent proposes frames; the user can pin, dismiss, or interact; user actions feed back as events. |
-| **Extensible frame catalog** | New surface types (calendar, map, alerts) register without redesigning the shell. |
+| **Extensible frame catalog** | New surface types (calendar, map, reminders) register without redesigning the shell. |
 | **Panel layout evolves** | **v1:** two panels (chat \| workspace). **Later:** N panels, user/agent rearrange. |
 
 ---
@@ -104,7 +104,7 @@ A **frame** is a typed, bounded UI region with its own state schema.
 | `provenance` | `agent` \| `user_pinned` \| `system`. |
 | `focus` | Whether this frame receives primary emphasis. |
 
-Frames are **not** general HTML; each type is a **prebuilt Flutter widget** (or web component) + contract.
+Frames are **not** general HTML; each type is a prebuilt frontend component (Svelte in the browser, or a web component) plus a contract.
 
 #### Frame catalog (initial)
 
@@ -114,8 +114,8 @@ Frames are **not** general HTML; each type is a **prebuilt Flutter widget** (or 
 | `calendar` | Trip date range, segment blocks, drag-reschedule → events. |
 | `todo_traveler` | User-facing checklist (packing, “call bank”, user todos)—distinct from agent work. |
 | `packing_list` | Specialized list with templates and weather hints. |
-| `alerts` | Active/disrupted watches and notifications summary. |
-| `alert_config` | Create/edit watches (thresholds, channels, lookahead e.g. 48h weather). |
+| `reminders` | Due **reminders** and active **monitors** (next **alert_at**, **note** summary). |
+| `reminder_config` | Create/edit **reminders** (one-shot) and **monitors** (interval, until). |
 | `file_deposit` | Upload / forward target / unmatched docs queue; link to bookings. |
 | `agent_tasks` | **Agent** background work: “fetching fares”, “parsing email”, progress + cancel. |
 | `trip_timeline` | Day-by-day itinerary strip (may merge with calendar later). |
@@ -175,9 +175,9 @@ frame.event { frame_id, event_type, payload }  →  agent + persistence
 | Edit / store | “Move day 3 temple to afternoon” | `calendar`, `map`, `trip_timeline` |
 | Book (later) | “Book the JAL option” | `interactive_form`, `agent_tasks`, `file_deposit` |
 | Documents | “Here’s my hotel email” (attach) | `file_deposit`, `agent_tasks` |
-| Pre-trip | “What’s weather before hiking day?” | `alerts`, `alert_config`, `calendar` |
-| Today | “What’s next?” | `trip_timeline`, `map`, `alerts` |
-| Disruption | Agent push + user reply | `alerts`, `map`, `interactive_form` (pick alternative) |
+| Pre-trip | “What’s weather before hiking day?” | `reminders`, `reminder_config`, `calendar` |
+| Today | “What’s next?” | `trip_timeline`, `map`, `reminders` |
+| Disruption | Agent push + user reply | `reminders`, `map`, `interactive_form` (pick alternative) |
 
 The agent **orchestrates** which frames are visible; the user can **pin** a frame so the agent doesn’t remove it casually.
 
@@ -188,28 +188,28 @@ The agent **orchestrates** which frames are visible; the user can **pin** a fram
 | Concern | Approach |
 |---------|----------|
 | **API shape** | Trip-scoped **session API**: send message, SSE/WebSocket for stream, fetch thread pages, fetch/apply workspace revision. |
-| **Persistence** | Threads (turns), workspace snapshots, fork metadata, search index (turn text + frame titles). |
-| **Agent harness** | `agents/` runs tool loop; tools return **structured results** → mapped to frame ops + chat citations. |
+| **Persistence** | **Messages** + threads ([schema](domain/schema.dbml): `conversation_messages`, `message_entity_links`), workspace snapshots, fork metadata, search index (message text + frame titles). |
+| **Agent harness** | `agent/` runs tool loop; tools return **structured results** → mapped to frame ops + chat citations. |
 | **Tools vs frames** | Tools = backend capabilities (gmaps, weather, email parse). Frames = user-visible projection of tool results. |
 | **Tasks** | Long jobs (email ingest, route matrix) → `agent_tasks` frame + job id; chat gets short summary when done. |
-| **Auth** | User identity on every thread/workspace; no frame payload with secrets (API keys stay server-side). |
+| **Auth** | User identity on every thread/workspace. **User secrets** (LLM keys, OAuth) stay in the [device vault](domain/domain-model.md#secrets) in v1—not in frame payloads or chat. **Deployment** API keys (e.g. shared Maps) stay server env only. |
 | **Versioning** | `frame_type` + schema version in payload for forward-compatible clients. |
 
 Avoid: storing only screenshots of UI. Store **frame payloads** and regenerate widgets on load.
 
 ---
 
-## Frontend architecture implications (Flutter)
+## Future frontend architecture implications
 
 | Concern | Approach |
 |---------|----------|
-| **Shell** | `DialogueShell`: two-pane layout; panel boundaries fixed in v1. |
-| **Chat pane** | `ThreadView` + search/fork/snapshot actions; virtualized list; markdown agent text. |
-| **Workspace pane** | `WorkspaceView` + `FrameHost` per type from registry. |
-| **State** | Client holds `threadId`, `workspaceRevision`, local cache; merges streamed ops. |
-| **Map** | Existing `FoggMap` lives inside `MapFrame`, driven by payload (viewport, overlays). |
-| **Extensibility** | `FrameRegistry.register(type, builder, schemaValidator)`. |
-| **Platform** | Same shell on web/Android/iOS; workspace layout may collapse to tabs on narrow width (chat \| workspace toggle). |
+| **Shell** | Evolve the current Svelte map/chat shell into a two-pane layout when workspace frames are implemented. |
+| **Chat pane** | Thread history and composer; add search/fork/snapshot actions later. |
+| **Workspace pane** | Workspace view with a frame host per registered type. |
+| **State** | Browser client holds thread, workspace revision, and local cache; merges streamed operations. |
+| **Map** | Map frame consumes viewport and overlay payloads; current map is `frontend/svelte/src/components/MapView.svelte`. |
+| **Extensibility** | Register frame type, Svelte component, and schema validator. |
+| **Platform** | Browser shell adapts to narrow screens; native UI is a separate future decision. |
 
 Responsive rule: **narrow = single visible panel** with toggle; workspace frames still exist in state when hidden.
 
@@ -253,7 +253,7 @@ User may say “help me book this” in chat; the agent **does not** capture pay
 ## Related docs
 
 - [User journeys & phases](user-journeys.md)
-- [AGENTS.md](../AGENTS.md) — repo layout (`frontend/`, `backend/`, future `agents/`)
+- [AGENTS.md](../AGENTS.md) — repo layout (`frontend/`, `backend/`, `agent/`)
 - [gmaps client](gmaps-client.md) — map **data**; map **frame** consumes backend summaries, not raw keys in client
 
 When implementation starts, add a short **Frame protocol** section to AGENTS.md linking here and listing implemented `frame_type` values.
