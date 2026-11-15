@@ -1,0 +1,6 @@
+{
+  "version": "1",
+  "name": "FOGG Travel Agent",
+  "type": "collection",
+  "ignore": ["node_modules", ".git"]
+}

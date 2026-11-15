@@ -1,0 +1,26 @@
+meta {
+  name: Chat stream (SSE)
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{agent_base_url}}/v1/users/bruno-stream/chat/stream
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  Accept: text/event-stream
+}
+
+body:json {
+  {
+    "message": "My destination is going to be: China"
+  }
+}
+
+docs {
+  SSE: `tool_call_start`, `tool_call_end`, `assistant_delta`, then `assistant_done`.
+}

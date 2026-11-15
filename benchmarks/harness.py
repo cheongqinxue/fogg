@@ -12,7 +12,7 @@ from tenacity import wait_fixed
 
 from benchmarks.scenarios import Scenario
 from gmaps.errors import GoogleMapsApiError
-from gmaps.redis_client import set_redis_client
+from agent_utils.redis_client import set_async_redis_client_for_tests
 from gmaps.requests import PlacesTextSearchRequest
 from gmaps.requests.base import close_http_client, get_http_client
 from gmaps.response_cache import CACHE_KEY_PREFIX
@@ -41,7 +41,7 @@ class GmapsBenchmarkHarness:
         """Apply scenario env, inject fakeredis, and mock HTTP."""
         reset_usage_store_for_tests()
         await close_http_client()
-        set_redis_client(None)
+        set_async_redis_client_for_tests(None)
 
         scenario = self._scenario
         os.environ["GOOGLE_MAPS_API_KEY"] = "benchmark-key-not-for-google"
@@ -52,7 +52,7 @@ class GmapsBenchmarkHarness:
         reset_usage_store_for_tests()
 
         self._redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
-        set_redis_client(self._redis)
+        set_async_redis_client_for_tests(self._redis)
 
         latency = scenario.simulated_google_latency_sec
         if scenario.group == "failure_path":
@@ -71,7 +71,7 @@ class GmapsBenchmarkHarness:
             base_module.wait_exponential_jitter = self._restore_retry_wait
             self._restore_retry_wait = None
         await close_http_client()
-        set_redis_client(None)
+        set_async_redis_client_for_tests(None)
         reset_usage_store_for_tests()
 
     async def invoke_once(self) -> dict[str, Any]:

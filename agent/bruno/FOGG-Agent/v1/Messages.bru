@@ -1,0 +1,19 @@
+meta {
+  name: Messages
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/v1/users/default/messages
+  body: none
+  auth: none
+}
+
+headers {
+  Accept: application/json
+}
+
+docs {
+  Returns user/assistant chat lines from the checkpointer (no map observations or client_context digests).
+}

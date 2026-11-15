@@ -1,0 +1,15 @@
+meta {
+  name: Layout head
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/v1/users/default/layout?revision=0
+  body: none
+  auth: none
+}
+
+headers {
+  Accept: application/json
+}

@@ -1,0 +1,34 @@
+meta {
+  name: Layout sync
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/v1/users/default/layout/sync
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  Accept: application/json
+}
+
+body:json {
+  {
+    "client_revision": 0,
+    "proposed_delta": {
+      "op": "map.set_viewport",
+      "source": "user",
+      "payload": {
+        "center": { "lat": 1.3521, "lng": 103.8198 },
+        "zoom": 12
+      }
+    }
+  }
+}
+
+docs {
+  Requires Postgres (agent checkpoints + layout store). First call seeds revision 0.
+}

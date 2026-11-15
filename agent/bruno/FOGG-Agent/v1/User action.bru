@@ -1,0 +1,28 @@
+meta {
+  name: User action
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/v1/users/default/user-actions
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  Accept: application/json
+}
+
+body:json {
+  {
+    "action": "map.viewport_changed",
+    "occurred_at": "2026-11-09T05:00:00.000Z",
+    "client_revision": 0,
+    "payload": {
+      "center": { "lat": 35.68, "lng": 139.76 },
+      "zoom": 10
+    }
+  }
+}

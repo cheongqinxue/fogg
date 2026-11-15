@@ -1,0 +1,15 @@
+meta {
+  name: Health
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{agent_base_url}}/v1/health
+  body: none
+  auth: none
+}
+
+docs {
+  Liveness. Expect `{"status":"ok"}`.
+}

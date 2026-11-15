@@ -1,0 +1,26 @@
+meta {
+  name: Chat (full turn)
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{agent_base_url}}/v1/users/bruno-demo/chat
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "message": "Say hello in one short sentence."
+  }
+}
+
+docs {
+  Full turn. Last `type: ai` message in `state.messages` is the reply.
+  Requires Ollama model `lfm3:1.7b` (or `AGENT_MODEL`) when using Compose.
+}
