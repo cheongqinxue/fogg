@@ -1,0 +1,111 @@
+# Local stack: Postgres (PostGIS) + Redis + Ollama + agent (FastAPI).
+# Usage: cp deploy/compose.env.example .env  # optional overrides (host ports)
+#        ./scripts/compose-up.sh full --build   # or: debug-agent + scripts/run-agent-debug.sh
+#
+# Ollama uses `gpus: all` — requires NVIDIA driver + Container Toolkit (see deploy/README.md).
+# CPU-only / no toolkit: remove or comment out the `gpus:` line under `ollama`.
+#
+# Host port publishing uses COMPOSE_PORT_* (defaults avoid clashes with local daemons).
+# Inside the Docker network, services still use 6379/5432/11434/8080/8000 unless you also
+# change AGENT_INTERNAL_PORT / BACKEND_INTERNAL_PORT and Dockerfiles.
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    gpus: all
+    ports:
+      - "${COMPOSE_PORT_OLLAMA:-11434}:11434"
+    volumes:
+      - .data/ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "${COMPOSE_PORT_REDIS:-16379}:6379"
+    # RDB snapshot after at least 1 change in 30 seconds; AOF fsyncs every second.
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - everysec
+      - --save
+      - ""
+      - --save
+      - "30"
+      - "1"
+    stop_grace_period: 30s
+    volumes:
+      - .data/redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  postgres:
+    image: postgis/postgis:16-3.4-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-fogg}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fogg}
+      POSTGRES_DB: ${POSTGRES_DB:-fogg}
+    ports:
+      - "${COMPOSE_PORT_POSTGRES:-15432}:5432"
+    volumes:
+      - .data/postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-fogg} -d ${POSTGRES_DB:-fogg}"]
+      interval: 5s
+      timeout: 5s
+      retries: 8
+
+  phoenix:
+    image: arizephoenix/phoenix:latest
+    ports:
+      - "127.0.0.1:${COMPOSE_PORT_PHOENIX:-16006}:6006"
+    environment:
+      PHOENIX_WORKING_DIR: /data
+      PHOENIX_ALLOW_EXTERNAL_RESOURCES: "false"
+    volumes:
+      - phoenix_data:/data
+
+  agent:
+    build:
+      context: .
+      dockerfile: docker/agent/Dockerfile
+    ports:
+      - "${COMPOSE_PORT_AGENT:-18080}:${AGENT_INTERNAL_PORT:-8080}"
+    environment:
+      AGENT_INTERNAL_PORT: ${AGENT_INTERNAL_PORT:-8080}
+      REDIS_URL: ${COMPOSE_AGENT_REDIS_URL:-redis://redis:6379/0}
+      FOGG_TRACING_ENABLED: ${FOGG_TRACING_ENABLED:-true}
+      FOGG_TRACING_ENDPOINT: ${COMPOSE_AGENT_TRACING_ENDPOINT:-http://phoenix:6006/v1/traces}
+      FOGG_TRACING_PROJECT: ${FOGG_TRACING_PROJECT:-fogg-dev}
+      # Not OPENAI_BASE_URL — root .env sets that for host dev; compose uses its own key.
+      # Default: in-compose Ollama. Host Ollama: COMPOSE_AGENT_OPENAI_BASE_URL=http://host.docker.internal:11434/v1
+      OPENAI_BASE_URL: ${COMPOSE_AGENT_OPENAI_BASE_URL:-http://ollama:11434/v1}
+      # Use AGENT_OPENAI_API_KEY in .env so host OPENAI_* does not override Ollama dev.
+      OPENAI_API_KEY: ${AGENT_OPENAI_API_KEY:-ollama}
+      AGENT_MODEL: ${AGENT_MODEL:-lfm3:1.7b}
+      AGENT_MAX_INPUT_TOKENS: ${AGENT_MAX_INPUT_TOKENS:-20000}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      # Not AGENT_DATABASE_URL — host .env often points at 127.0.0.1:COMPOSE_PORT_POSTGRES.
+      DATABASE_URL: ${COMPOSE_AGENT_DATABASE_URL:-postgresql://fogg:fogg@postgres:5432/fogg}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      ollama:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+volumes:
+  phoenix_data:
