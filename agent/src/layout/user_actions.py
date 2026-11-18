@@ -9,7 +9,7 @@ from typing import Any, Literal
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel, Field, field_validator
 
-from graph.agent import get_graph
+from master_agt.agent import get_graph
 from layout.models import LayoutSyncResponse
 from layout.service import sync_user_viewport_layout
 from layout.store import get_or_create_thread_layout, upsert_thread_layout

@@ -9,7 +9,7 @@ import pytest
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from langgraph.checkpoint.memory import MemorySaver
 
-from graph import agent as agent_module
+from master_agt import agent as agent_module
 
 
 class FakeModel:
@@ -33,7 +33,7 @@ async def test_model_node_trims_history_and_keeps_system_prompt(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from langchain_core.messages import SystemMessage
-    from graph.nodes import build_model_node
+    from master_agt.nodes import build_model_node
 
     monkeypatch.setenv("AGENT_MAX_INPUT_TOKENS", "3")
     model = FakeModel([AIMessage(content="Ready")])
@@ -51,6 +51,40 @@ async def test_model_node_trims_history_and_keeps_system_prompt(
     assert received[-1].content == "latest"
     assert len(received) <= 3
     assert all(message.content != "old" for message in received)
+
+
+@pytest.mark.asyncio
+async def test_model_node_preserves_latest_user_request_when_tool_history_overflows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from master_agt.nodes import build_model_node
+
+    monkeypatch.setenv("AGENT_MAX_INPUT_TOKENS", "80")
+    model = FakeModel([AIMessage(content="I will continue the requested research.")])
+
+    def count_content(messages: Sequence[BaseMessage]) -> int:
+        return sum(len(str(message.content)) for message in messages)
+
+    node = build_model_node(
+        model,
+        system_prompt="system",
+        token_counter=count_content,
+    )
+    request = HumanMessage(content="Research where locals in Busan go for supper.")
+    state = {
+        "messages": [
+            request,
+            AIMessage(content=""),
+            ToolMessage(content="search result " * 100, tool_call_id="search-1"),
+        ]
+    }
+
+    await node(state)
+
+    received = model.received[0]
+    assert received[0].content == "system"
+    assert any(message is request for message in received)
+    assert "Busan" in str(next(message.content for message in received if message is request))
 
 
 @pytest.mark.asyncio
@@ -72,7 +106,7 @@ async def test_graph_runs_model_tool_model_loop(monkeypatch: pytest.MonkeyPatch)
         ]
     )
     monkeypatch.setattr(agent_module, "get_llm", lambda: model)
-    monkeypatch.setattr("graph.nodes.trim_messages", lambda messages, **_kwargs: messages)
+    monkeypatch.setattr("master_agt.nodes.trim_messages", lambda messages, **_kwargs: messages)
     monkeypatch.setattr(agent_module, "get_checkpointer", lambda: MemorySaver())
     graph = agent_module.build_graph()
 
@@ -95,7 +129,7 @@ async def test_graph_ends_when_model_does_not_request_tools(
 ) -> None:
     model = FakeModel([AIMessage(content="Hello.")])
     monkeypatch.setattr(agent_module, "get_llm", lambda: model)
-    monkeypatch.setattr("graph.nodes.trim_messages", lambda messages, **_kwargs: messages)
+    monkeypatch.setattr("master_agt.nodes.trim_messages", lambda messages, **_kwargs: messages)
     monkeypatch.setattr(agent_module, "get_checkpointer", lambda: MemorySaver())
     graph = agent_module.build_graph()
 
@@ -114,7 +148,7 @@ async def _run_tool_error_graph(monkeypatch, test_tool, args):
     from langchain_core.messages import AIMessage
     from langgraph.graph import END, START, MessagesState, StateGraph
 
-    from graph.nodes import build_tool_node
+    from master_agt.nodes import build_tool_node
 
     tool_call = AIMessage(
         content="",
@@ -127,7 +161,7 @@ async def _run_tool_error_graph(monkeypatch, test_tool, args):
             }
         ],
     )
-    monkeypatch.setattr("graph.nodes.get_tools", lambda: [test_tool])
+    monkeypatch.setattr("master_agt.nodes.get_tools", lambda: [test_tool])
     observed_by_agent = []
 
     async def agent_node(state):
@@ -154,7 +188,7 @@ async def test_validation_error_is_returned_to_agent_with_retry_guidance(
     from langchain_core.tools import tool
     from pydantic import Field
 
-    from graph.tools import ToolInput
+    from master_agt.tools import ToolInput
 
     class StrictCountInput(ToolInput):
         count: int = Field(description="Integer count required by this test tool.")
@@ -181,7 +215,7 @@ async def test_execution_error_is_returned_without_retry_instruction(
     from langchain_core.tools import tool
     from pydantic import Field
 
-    from graph.tools import ToolInput
+    from master_agt.tools import ToolInput
 
     class FailingInput(ToolInput):
         name: str = Field(description="Name parameter accepted by this test tool.")

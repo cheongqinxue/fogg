@@ -8,13 +8,13 @@ import pytest
 from langchain.agents import create_agent
 from langchain_core.language_models.fake_chat_models import FakeListChatModel
 
-from graph.checkpointing import get_checkpointer, init_checkpointer, shutdown_checkpointer
+from agent_utils.checkpointing import get_checkpointer, init_checkpointer, shutdown_checkpointer
 
 
 class TestAgentCheckpoint:
     @pytest.mark.unit
     def test_default_database_url_when_unset(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from graph.checkpointing import _database_url
+        from agent_utils.checkpointing import _database_url
 
         monkeypatch.delenv("AGENT_DATABASE_URL", raising=False)
         monkeypatch.delenv("DATABASE_URL", raising=False)

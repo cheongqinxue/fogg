@@ -413,6 +413,7 @@ def echo_destination(name: str) -> str:
 
 def get_tools():
     """Return async tools registered with the model and ToolNode."""
+
     return [
         places_text_search,
         places_search_nearby,

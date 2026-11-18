@@ -7,7 +7,7 @@ import uuid
 
 import pytest
 
-from graph.checkpointing import init_checkpointer, shutdown_checkpointer
+from agent_utils.checkpointing import init_checkpointer, shutdown_checkpointer
 from api.dev_reset import DevResetRequest, reset_agent_state
 from layout.store import get_or_create_thread_layout, init_layout_store, shutdown_layout_store
 from api.messages.store import append_message, init_message_store, shutdown_message_store
@@ -28,7 +28,7 @@ class TestDevReset:
         try:
             await get_or_create_thread_layout(thread_id)
             await append_message(thread_id, "user", "hello")
-            graph = __import__("graph.agent", fromlist=["get_graph"]).get_graph()
+            graph = __import__("master_agt.agent", fromlist=["get_graph"]).get_graph()
             from langchain_core.messages import HumanMessage
 
             await graph.aupdate_state(

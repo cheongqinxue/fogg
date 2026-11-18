@@ -1,8 +1,8 @@
 # LangGraph ReAct agent (this repo)
 
-[LangGraph application layout](https://docs.langchain.com/oss/python/langgraph/application-structure): Python package **`graph/`** at **`agent/src/graph/`**, **`langgraph.json`** in **`agent/`**, Bruno under **`agent/bruno/`**.
+[LangGraph application layout](https://docs.langchain.com/oss/python/langgraph/application-structure): Python package **`master_agt/`** at **`agent/src/master_agt/`**, **`langgraph.json`** in **`agent/`**, Bruno under **`agent/bruno/`**.
 
-The **`graph`** package is included in the **repository root** `uv` project (`pyproject.toml` hatch sources map `agent/src/graph` → import name `graph`). Use **one venv at repo root** — no separate `agent/pyproject.toml`.
+The **`graph`** package is included in the **repository root** `uv` project (`pyproject.toml` hatch sources map `agent/src/master_agt` → import name `master_agt`). Use **one venv at repo root** — no separate `agent/pyproject.toml`.
 
 Model backend: **OpenAI-compatible API** via **`ChatOpenAI`**. Defaults: **Ollama** + **LFM3 1.7B** (`lfm3:1.7b`). Same code path works for **vLLM** / **SGLang** — change **`OPENAI_BASE_URL`** and **`AGENT_MODEL`**.
 
@@ -68,7 +68,7 @@ uv run langgraph dev
 ## Invoke in Python
 
 ```python
-from graph.agent import graph  # lazy singleton
+from master_agt.agent import graph  # lazy singleton
 
 result = graph.invoke(
     {"messages": [("user", "Say hello and use echo_destination for Paris.")]}
@@ -97,19 +97,19 @@ agent/
 ├── bruno/FOGG-Agent/
 ├── langgraph.json
 └── src/
-    ├── graph/       # LangGraph harness, graph state/tools, checkpoint integration
+    ├── master_agt/       # LangGraph harness, graph state/tools, checkpoint integration
     ├── api/         # FastAPI app, routes, transcript endpoints, dev reset
     ├── layout/      # independent layout functionality (store, sync, map tool)
     ├── gmaps/       # Google Maps client functionality; import name remains gmaps
     └── agent_utils/ # shared DB, environment, and request-context helpers
 ```
 
-Agent, layout, and Maps client tests live in **`agent/tests/`** (imports include `graph.*`, `api.*`, `layout.*`, and `gmaps.*`).
+Agent, layout, and Maps client tests live in **`agent/tests/`** (imports include `master_agt.*`, `api.*`, `layout.*`, and `gmaps.*`).
 
 # Simulated agent scenario
 
 With `FOGG_ENV=dev`, the agent replaces Google Maps tools with simulations.
-All entries in `graph/simulations/__init__.py` are available simultaneously.
+All entries in `master_agt/simulations/__init__.py` are available simultaneously.
 Each case maps expected argument values to a response. Expectations support
 regular expressions, nested dictionaries, inclusive numeric ranges, and a
 geographic center with a maximum distance. Unmatched calls return a tool error;

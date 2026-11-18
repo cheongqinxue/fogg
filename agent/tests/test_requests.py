@@ -45,7 +45,7 @@ BASE_LOGGER = "gmaps.requests.base"
 @pytest.mark.asyncio
 async def test_text_search_circle_restriction_filters_outside_and_requests_location(monkeypatch):
     import json
-    from graph.tools import places_text_search
+    from master_agt.tools import places_text_search
     from gmaps.requests.search_fields import TEXT_SEARCH_PRO_MASK
     from gmaps.requests.places import PlacesTextSearchRequest
 
@@ -81,7 +81,7 @@ async def test_text_search_circle_restriction_filters_outside_and_requests_locat
 
 @pytest.mark.asyncio
 async def test_agent_search_tools_use_pro_masks(monkeypatch):
-    from graph.tools import places_search_nearby, places_text_search
+    from master_agt.tools import places_search_nearby, places_text_search
     from gmaps.requests.places import PlacesSearchNearbyRequest, PlacesTextSearchRequest
     from gmaps.requests.search_fields import NEARBY_SEARCH_PRO_MASK, TEXT_SEARCH_PRO_MASK
 
@@ -124,7 +124,7 @@ async def test_agent_search_tools_use_pro_masks(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_all_agent_tools_hide_masks_and_use_code_owned_fields(monkeypatch):
-    from graph.tools import get_tools, places_get, routes_compute, routes_compute_matrix
+    from master_agt.tools import get_tools, places_get, routes_compute, routes_compute_matrix
     from gmaps.requests.places import PlacesGetRequest
     from gmaps.requests.route_fields import MATRIX_MASK, ROUTE_MASK, ROUTE_OPTIMIZED_ORDER_FIELD
     from gmaps.requests.search_fields import PLACE_DETAILS_PRO_MASK

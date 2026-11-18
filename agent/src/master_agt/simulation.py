@@ -12,7 +12,7 @@ from typing import Any
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel
 
-from graph.simulations import SCENARIOS
+from master_agt.simulations import SCENARIOS
 
 # All tools that can contact Google must always be intercepted in development,
 # even when no fixture currently exists for them.

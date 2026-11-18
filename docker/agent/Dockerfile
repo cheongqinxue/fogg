@@ -11,7 +11,7 @@ COPY agent/src/gmaps ./agent/src/gmaps
 COPY agent/src/layout ./agent/src/layout
 COPY agent/src/api ./agent/src/api
 COPY agent/src/agent_utils ./agent/src/agent_utils
-COPY agent/src/graph ./agent/src/graph
+COPY agent/src/master_agt ./agent/src/master_agt
 
 RUN uv sync --frozen --no-dev
 

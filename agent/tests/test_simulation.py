@@ -7,8 +7,8 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.checkpoint.memory import InMemorySaver
 
-from graph.simulation import SimulationError, simulated_tools
-from graph.tools import get_tools
+from master_agt.simulation import SimulationError, simulated_tools
+from master_agt.tools import get_tools
 
 
 def test_original_schemas_and_local_tools_are_preserved():
@@ -102,7 +102,7 @@ async def test_nagano_text_search_includes_three_distinct_locations():
 @pytest.mark.asyncio
 @pytest.mark.parametrize("index", range(3))
 async def test_simulated_airport_routes_match_destination(index):
-    from graph.simulations import TEXT_SEARCH_SKI_RESORTS
+    from master_agt.simulations import TEXT_SEARCH_SKI_RESORTS
 
     route = next(
         t for t in simulated_tools(get_tools(), delay_seconds=0) if t.name == "routes_compute"
@@ -167,7 +167,7 @@ async def test_airport_search_result_can_be_used_as_route_origin():
 
 @pytest.mark.asyncio
 async def test_simulated_calls_apply_async_delay_on_success_and_failure(monkeypatch):
-    from graph import simulation
+    from master_agt import simulation
 
     delays = []
 
@@ -185,7 +185,7 @@ async def test_simulated_calls_apply_async_delay_on_success_and_failure(monkeypa
 
 @pytest.mark.asyncio
 async def test_dev_graph_uses_simulated_tool(monkeypatch):
-    from graph import agent
+    from master_agt import agent
     from gmaps.settings import reset_usage_store_for_tests
 
     class Model:

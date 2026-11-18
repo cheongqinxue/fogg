@@ -1,6 +1,6 @@
-"""LangGraph travel assistant — graph + tools (product-neutral package name)."""
+"""Master LangGraph travel assistant and its tools."""
 
-from graph.agent import build_graph, get_graph
+from master_agt.agent import build_graph, get_graph
 
 __all__ = ["build_graph", "get_graph"]
 

@@ -4,7 +4,7 @@ Read this file first for repo layout, entrypoints, and where human-facing docs l
 
 **Last updated:** 2026-11-15
 
-**Last Python review:** 2026-11-09 — agent `graph/` layout store, thread routes, chat/SSE, Postgres checkpoints.
+**Last Python review:** 2026-11-09 — agent `master_agt/` layout store, thread routes, chat/SSE, Postgres checkpoints.
 
 ## What this repo is
 
@@ -114,20 +114,20 @@ Use **Postman** (Google Maps Platform workspace) for API exploration — not che
 
 ## Agents directory
 
-[`agent/`](agent/README.md) — LangGraph ReAct harness (`graph` package at `agent/src/graph/`). From **repo root**: `uv sync`; optional `cp agent/.env-template agent/.env`; `uv run uvicorn api.app:app` (or `./scripts/run-agent-debug.sh`). API contract: [`docs/agent-api.md`](docs/agent-api.md). Package map (under `agent/src/graph/`):
+[`agent/`](agent/README.md) — LangGraph ReAct harness (`master_agt` package at `agent/src/master_agt/`). From **repo root**: `uv sync`; optional `cp agent/.env-template agent/.env`; `uv run uvicorn api.app:app` (or `./scripts/run-agent-debug.sh`). API contract: [`docs/agent-api.md`](docs/agent-api.md). Package map (under `agent/src/master_agt/`):
 
 | Module | Role |
 |--------|------|
-| `graph/routes/` | `/v1` health and user-scoped chat, SSE, messages, layout, and user-actions; `chat_handlers.py` and `chat_messages.py` split chat orchestration/history routes |
-| `graph/agent.py`, `graph/graph_utils/` | `create_agent` + lazy `get_graph()`; graph state, nodes, and tools |
+| `master_agt/routes/` | `/v1` health and user-scoped chat, SSE, messages, layout, and user-actions; `chat_handlers.py` and `chat_messages.py` split chat orchestration/history routes |
+| `master_agt/agent.py`, `master_agt/graph_utils/` | `create_agent` + lazy `get_graph()`; graph state, nodes, and tools |
 | `agent_utils/` | Shared database URL, environment loading, and request-scoped context helpers |
 | `layout/` | Independent layout store, sync, and map viewport functionality |
 | `gmaps/` | Google Maps client package (import name: `gmaps`) |
 | `api/app.py`, `api/main.py`, `api/routes/`, `api/messages/` | FastAPI service/lifespan, Uvicorn entrypoints, HTTP routes, and transcript endpoint handling |
 | `api/dev_reset.py` | Development-only data reset behavior |
-| `graph/layout/` | Postgres layout rows, models, hashing/sync rules, client context, user actions, and `map_set_viewport` tool implementation (`_tool.py`) |
-| `graph/messages/history.py` | Checkpoint-backed transcript history for the client |
-| `graph/checkpointing.py` | `AsyncPostgresSaver` checkpointer |
+| `master_agt/layout/` | Postgres layout rows, models, hashing/sync rules, client context, user actions, and `map_set_viewport` tool implementation (`_tool.py`) |
+| `master_agt/messages/history.py` | Checkpoint-backed transcript history for the client |
+| `agent_utils/checkpointing.py` | `AsyncPostgresSaver` checkpointer |
 
 LangGraph Studio: `cd agent && uv run langgraph dev` (needs Postgres URL like uvicorn).
 

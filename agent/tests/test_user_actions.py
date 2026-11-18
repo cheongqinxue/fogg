@@ -32,8 +32,8 @@ class TestUserActions:
         if not (os.environ.get("AGENT_DATABASE_URL") or os.environ.get("DATABASE_URL")):
             pytest.skip("DATABASE_URL not set")
 
-        from graph.agent import get_graph, reset_graph_for_tests
-        from graph.checkpointing import init_checkpointer, shutdown_checkpointer
+        from master_agt.agent import get_graph, reset_graph_for_tests
+        from agent_utils.checkpointing import init_checkpointer, shutdown_checkpointer
 
         await init_layout_store()
         await init_checkpointer()

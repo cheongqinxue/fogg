@@ -11,7 +11,7 @@ from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.messages.base import message_to_dict, messages_to_dict
 from pydantic import BaseModel, Field
 
-from graph.agent import get_graph
+from master_agt.agent import get_graph
 from layout import client_command_from_tool_output
 from layout.client_context import ClientContextPayload
 from layout.store import get_layout_head, get_or_create_thread_layout

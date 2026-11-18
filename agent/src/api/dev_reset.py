@@ -6,7 +6,7 @@ import os
 
 from pydantic import BaseModel, Field
 
-from graph.checkpointing import get_checkpointer
+from agent_utils.checkpointing import get_checkpointer
 from layout.store import (
     _require_pool,
     delete_thread_layout,

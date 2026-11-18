@@ -121,7 +121,7 @@ Clients store `revision` + `layout_hash` with the cached document. On desync, th
 | **Agent should focus map** | — | Model calls tool **`map_set_viewport`** | Tool may update server layout when command is accepted |
 | **Agent commands UI** | Apply **`client_command`** | Only emitted when **`map_set_viewport`** runs | Confirm with **`layout/sync`** `applied` |
 
-**Adjudication:** Whether to move the map after a user pan is **not** a hard server merge rule. The model reads **when** the user moved, **where** they looked, and **what** was said in chat, then **chooses** to call **`map_set_viewport`** or not. Policy text lives in **`SYSTEM_PROMPT`** in [`agent/src/graph/agent.py`](../agent/src/api/agent.py) (focus inference, when to call the tool vs stay silent). Optional server guard: do not emit `client_command` if the tool’s target viewport is unchanged or invalid.
+**Adjudication:** Whether to move the map after a user pan is **not** a hard server merge rule. The model reads **when** the user moved, **where** they looked, and **what** was said in chat, then **chooses** to call **`map_set_viewport`** or not. Policy text lives in **`SYSTEM_PROMPT`** in [`agent/src/master_agt/agent.py`](../agent/src/master_agt/agent.py) (focus inference, when to call the tool vs stay silent). Optional server guard: do not emit `client_command` if the tool’s target viewport is unchanged or invalid.
 
 **`layout/sync`:** Still used for **`applied`** acks after `client_command`, **`sync_mode: full`** on desync, and (today) throttled **`proposed_delta`** until **`user-actions`** is implemented on the client. Long term: pan → **`user-actions`**; keep **`layout/sync`** for agent confirmations and realign.
 

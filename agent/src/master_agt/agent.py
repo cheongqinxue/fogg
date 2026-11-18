@@ -2,19 +2,17 @@
 
 from __future__ import annotations
 
-import os
-import json
 from typing import TYPE_CHECKING
 
-from langchain_core.messages import BaseMessage
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import tools_condition
 
-from graph.checkpointing import get_checkpointer
-from graph.nodes import build_model_node, build_tool_node
-from graph.state import AgentState
-from graph.tools import get_tools
+from agent_utils.checkpointing import get_checkpointer
+from agent_utils.model import create_chat_model, estimate_tokens
+from master_agt.nodes import build_model_node, build_tool_node
+from master_agt.state import AgentState
+from master_agt.tools import get_tools
 
 if TYPE_CHECKING:
     from langgraph.graph.state import CompiledStateGraph
@@ -67,7 +65,8 @@ the map (no tool). You may acknowledge what they are looking at in natural langu
 Use the Places tools to search and retrieve candidate places, and Routes tools to compute or
 compare travel routes. A
 search result is a candidate, not a personalized recommendation; explain the evidence and
-ask for preferences when needed. Map focus and place search are separate decisions."""
+ask for preferences when needed. Map focus and place search are separate decisions.
+"""
 
 _DEFAULT_MODEL = "lfm3:1.7b"
 # OpenAI-compatible API base (Ollama: append /v1 — same pattern for vLLM/SGLang).
@@ -76,23 +75,14 @@ _DEFAULT_OPENAI_BASE_URL = "http://127.0.0.1:11434/v1"
 _compiled: CompiledStateGraph | None = None
 
 
-def _estimate_tokens(messages: list[BaseMessage]) -> int:
-    """Estimate tokens locally, including tool calls and message metadata."""
-    return sum(
-        (len(json.dumps(message.model_dump(), ensure_ascii=False, default=str)) + 2) // 3 + 4
-        for message in messages
-    )
-
-
 def get_llm() -> ChatOpenAI:
-    model_name = os.environ.get("AGENT_MODEL", _DEFAULT_MODEL)
-    base_url = os.environ.get("OPENAI_BASE_URL", _DEFAULT_OPENAI_BASE_URL)
-    api_key = os.environ.get("OPENAI_API_KEY", "ollama")
-    return ChatOpenAI(
-        model=model_name,
-        base_url=base_url,
-        api_key=api_key,
-        temperature=0,
+    """Build the master agent's OpenAI-compatible chat model."""
+    return create_chat_model(
+        model_env="AGENT_MODEL",
+        base_url_env="OPENAI_BASE_URL",
+        api_key_env="OPENAI_API_KEY",
+        default_model=_DEFAULT_MODEL,
+        default_base_url=_DEFAULT_OPENAI_BASE_URL,
         extra_body={"think": True},
     )
 
@@ -108,14 +98,14 @@ def build_graph(*, tools=None, checkpointer=None, model=None) -> CompiledStateGr
         from gmaps.settings import get_settings
 
         if get_settings().fogg_env == "dev":
-            from graph.simulation import simulated_tools
+            from master_agt.simulation import simulated_tools
 
             tools = simulated_tools(tools)
     model = (get_llm() if model is None else model).bind_tools(tools)
     builder = StateGraph(AgentState)
     builder.add_node(
         "agent",
-        build_model_node(model, system_prompt=SYSTEM_PROMPT, token_counter=_estimate_tokens),
+        build_model_node(model, system_prompt=SYSTEM_PROMPT, token_counter=estimate_tokens),
     )
     builder.add_node("tools", build_tool_node(tools))
     builder.add_edge(START, "agent")
@@ -141,7 +131,7 @@ def reset_graph_for_tests() -> None:
 
 
 def __getattr__(name: str) -> CompiledStateGraph:
-    """Support ``from graph.agent import graph`` (LangGraph CLI) lazily."""
+    """Support ``from master_agt.agent import graph`` (LangGraph CLI) lazily."""
     if name == "graph":
         return get_graph()
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

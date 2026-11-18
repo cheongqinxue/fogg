@@ -7,7 +7,7 @@ RUN pip install --no-cache-dir uv
 
 COPY pyproject.toml uv.lock README.md ./
 COPY backend/__init__.py backend/server.py ./backend/
-COPY agent/src/graph ./agent/src/graph
+COPY agent/src/master_agt ./agent/src/master_agt
 
 RUN uv sync --frozen --no-dev
 
