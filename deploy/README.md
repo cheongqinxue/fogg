@@ -12,16 +12,77 @@
 | `redis`    | `COMPOSE_PORT_REDIS` (16379) | 6379 | Cache / queues |
 | `postgres` | `COMPOSE_PORT_POSTGRES` (15432) | 5432 | PostGIS |
 | `ollama`   | `COMPOSE_PORT_OLLAMA` (11434) | 11434 | LLM runtime (models in `.data/ollama_data`) |
-| `agent`    | `COMPOSE_PORT_AGENT` (18080) | `AGENT_INTERNAL_PORT` (8080) | `api.app` |
+| `agent`    | `COMPOSE_PORT_AGENT` (18080) | `AGENT_INTERNAL_PORT` (8080) | Master `api.app`, no Chromium binary |
+| `browser-research` | internal only in `full`; loopback only in `debug-agent` | 18081 | Authenticated research graph/model service |
+| `browser-worker` | none | Unix socket only | Sandboxed Chromium jobs; `network_mode: none` |
+| `browser-proxy` | none | Unix socket only | Validates and pins public egress destinations |
 | `backend`  | `COMPOSE_PORT_BACKEND` (18000) | `BACKEND_INTERNAL_PORT` (8000) | [`backend/server.py`](../backend/server.py) stub |
 
 **Run**
 
 ```bash
 cp deploy/compose.env.example .env   # edit COMPOSE_PORT_* if needed
-./scripts/compose-up.sh full --build        # agent in Docker
+./scripts/compose-up.sh full --build        # agent and private browser stack in Docker
 ./scripts/compose-up.sh --list-profiles     # profiles + usage
 ```
+
+Before starting either profile, set these values in `.env`:
+
+```dotenv
+BROWSER_AGENT_SERVICE_TOKEN=<output of openssl rand -hex 32>
+BROWSER_PROXY_DENY_HOSTS=<comma-separated host IPs and deployment service CIDRs>
+```
+
+The proxy deny list must include the deployment host's addresses and any public or
+private service ranges that the proxy must not reach. The proxy rejects private,
+loopback, link-local, and other non-public targets and pins DNS results; this does
+not identify a deployment's own public addresses. In production, also enforce
+egress filtering outside Docker so infrastructure addresses cannot be reached
+through overlooked routes.
+
+The browser worker has no non-loopback network interface, no TCP listener on a container
+interface, no application credentials, a read-only root filesystem, a non-root
+UID, Chromium's sandbox, and bounded CPU, memory, process count, task time, and
+browser actions. Its only egress path is a loopback TCP relay that forwards to the
+proxy's Unix socket. Chromium is configured to use that proxy explicitly, bypass
+loopback proxy bypass behavior, and disable QUIC. The research service and master
+communicate over HTTP; the worker speaks a bounded JSON-lines protocol over a
+private Unix socket, one connection and browser context per task. Closing or
+losing that connection closes the browser context. No worker or proxy port is
+published to the host.
+
+The defaults are 90 seconds per research task, 20 graph steps, 30 browser actions,
+10 seconds per browser operation and two concurrent research tasks. Each browser
+navigation, observation, click, fill or back action counts separately. Operators
+can configure `BROWSER_AGENT_TASK_TIMEOUT_SECONDS`, `BROWSER_AGENT_MAX_CONCURRENT_TASKS`,
+`BROWSER_WORKER_MAX_TASK_SECONDS`, `BROWSER_WORKER_ACTION_LIMIT`, and
+`BROWSER_WORKER_OPERATION_TIMEOUT_MS`; the worker rejects values outside its hard
+limits. The proxy caps each HTTPS tunnel direction at 64 MiB, not individual
+decrypted responses, and allows at most 64 concurrent connections by default.
+
+Chromium runs with its own sandbox. `browser-worker` uses
+[`chromium-seccomp.json`](chromium-seccomp.json), pinned from Microsoft's
+Playwright repository at commit
+[`354e6fa33a899f8e0ee1ef5428eaf9a934378615`](https://github.com/microsoft/playwright/commit/354e6fa33a899f8e0ee1ef5428eaf9a934378615).
+It is the Docker default seccomp profile with Playwright's additional allow rule
+for `clone`, `setns`, and `unshare`, plus `chroot` for Chromium's namespace-local
+sandbox setup. The worker drops all container capabilities, so the added seccomp
+permission does not itself grant host-level chroot privilege. It does not use
+`seccomp=unconfined`. Chromium startup was smoke-tested on the development host
+with the worker's network, filesystem, capability and seccomp restrictions; other
+hosts must also support unprivileged user namespaces.
+
+`debug-agent` requests a loopback-only published research endpoint. On Linux Docker,
+services connected only to internal networks can have no published binding; in
+that case `scripts/run-agent-debug.sh` discovers the research container's bridge
+address for the host-run master. Set the same service token in `.env`; the script
+loads it. On hosts that cannot reach Docker bridge addresses directly, provide a
+reachable `BROWSER_AGENT_SERVICE_URL` explicitly.
+
+After starting the stack, `uv run pytest agent/tests/test_browser_deployment.py -m integration`
+checks the worker's network mode, confirms its proxy rejects a loopback destination,
+and opens a blank page through the worker socket. The check makes no paid API calls.
+The remaining browser tests run offline with `uv run pytest -m unit`.
 
 **Agent on host (no container rebuild):**
 

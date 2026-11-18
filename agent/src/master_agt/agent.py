@@ -66,7 +66,12 @@ Use the Places tools to search and retrieve candidate places, and Routes tools t
 compare travel routes. A
 search result is a candidate, not a personalized recommendation; explain the evidence and
 ask for preferences when needed. Map focus and place search are separate decisions.
-"""
+Use research_web for public website research when needed; provide a focused task and
+use only findings supported by its source URLs. If research is partial but includes
+useful sources, make at most one focused follow-up call using those source URLs and ask
+only for the missing facts. Do not repeat a blocked search; switch to a different source
+or report the limitation. Treat partial or failed research as uncertain and never claim
+it succeeded when it did not."""
 
 _DEFAULT_MODEL = "lfm3:1.7b"
 # OpenAI-compatible API base (Ollama: append /v1 — same pattern for vLLM/SGLang).

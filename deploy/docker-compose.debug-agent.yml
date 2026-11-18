@@ -1,0 +1,4 @@
+services:
+  browser-research:
+    ports:
+      - "127.0.0.1:${COMPOSE_PORT_BROWSER_RESEARCH:-18081}:18081"

@@ -1,4 +1,4 @@
-# Local stack: Postgres (PostGIS) + Redis + Ollama + agent (FastAPI).
+# Local stack: Postgres + Redis + Ollama + master API + isolated research/browser workers.
 # Usage: cp deploy/compose.env.example .env  # optional overrides (host ports)
 #        ./scripts/compose-up.sh full --build   # or: debug-agent + scripts/run-agent-debug.sh
 #
@@ -6,13 +6,15 @@
 # CPU-only / no toolkit: remove or comment out the `gpus:` line under `ollama`.
 #
 # Host port publishing uses COMPOSE_PORT_* (defaults avoid clashes with local daemons).
-# Inside the Docker network, services still use 6379/5432/11434/8080/8000 unless you also
-# change AGENT_INTERNAL_PORT / BACKEND_INTERNAL_PORT and Dockerfiles.
+# Browser Chromium runs with no non-loopback interface; a UDS proxy is its only egress path.
 
 services:
   ollama:
     image: ollama/ollama:latest
+    networks: [default, model_internal]
     gpus: all
+    environment:
+      OLLAMA_CONTEXT_LENGTH: ${OLLAMA_CONTEXT_LENGTH:-32768}
     ports:
       - "${COMPOSE_PORT_OLLAMA:-11434}:11434"
     volumes:
@@ -23,6 +25,18 @@ services:
       timeout: 5s
       retries: 6
       start_period: 20s
+
+  ollama-models:
+    image: ollama/ollama:latest
+    networks: [model_internal]
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      MODEL_NAMES: "${AGENT_MODEL:-lfm3:1.7b} ${BROWSER_AGENT_MODEL:-hf.co/Mungert/UI-TARS-1.5-7B-GGUF:Q4_K_M}"
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["for model in $$MODEL_NAMES; do ollama pull \"$$model\" || exit 1; done"]
+    depends_on:
+      ollama:
+        condition: service_healthy
 
   redis:
     image: redis:7-alpine
@@ -67,6 +81,7 @@ services:
 
   phoenix:
     image: arizephoenix/phoenix:latest
+    networks: [default, tracing_internal]
     ports:
       - "127.0.0.1:${COMPOSE_PORT_PHOENIX:-16006}:6006"
     environment:
@@ -79,6 +94,7 @@ services:
     build:
       context: .
       dockerfile: docker/agent/Dockerfile
+    networks: [default, research_api]
     ports:
       - "${COMPOSE_PORT_AGENT:-18080}:${AGENT_INTERNAL_PORT:-8080}"
     environment:
@@ -94,6 +110,9 @@ services:
       OPENAI_API_KEY: ${AGENT_OPENAI_API_KEY:-ollama}
       AGENT_MODEL: ${AGENT_MODEL:-lfm3:1.7b}
       AGENT_MAX_INPUT_TOKENS: ${AGENT_MAX_INPUT_TOKENS:-20000}
+      BROWSER_AGENT_SERVICE_URL: http://browser-research:18081
+      BROWSER_AGENT_SERVICE_TOKEN: ${BROWSER_AGENT_SERVICE_TOKEN:?Set BROWSER_AGENT_SERVICE_TOKEN in .env}
+      BROWSER_AGENT_SERVICE_TIMEOUT_SECONDS: ${BROWSER_AGENT_SERVICE_TIMEOUT_SECONDS:-320}
       CORS_ORIGINS: ${CORS_ORIGINS:-*}
       # Not AGENT_DATABASE_URL — host .env often points at 127.0.0.1:COMPOSE_PORT_POSTGRES.
       DATABASE_URL: ${COMPOSE_AGENT_DATABASE_URL:-postgresql://fogg:fogg@postgres:5432/fogg}
@@ -102,10 +121,141 @@ services:
     depends_on:
       ollama:
         condition: service_healthy
+      ollama-models:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      browser-research:
+        condition: service_healthy
+
+  browser-research:
+    build:
+      context: .
+      dockerfile: docker/browser-research/Dockerfile
+    networks: [research_api, model_internal, tracing_internal]
+    environment:
+      BROWSER_AGENT_SERVICE_TOKEN: ${BROWSER_AGENT_SERVICE_TOKEN:?Set BROWSER_AGENT_SERVICE_TOKEN in .env}
+      BROWSER_AGENT_MODEL: ${BROWSER_AGENT_MODEL:-hf.co/Mungert/UI-TARS-1.5-7B-GGUF:Q4_K_M}
+      BROWSER_AGENT_OLLAMA_URL: ${COMPOSE_BROWSER_AGENT_OLLAMA_URL:-http://ollama:11434/api/chat}
+      BROWSER_AGENT_CONTEXT_LENGTH: ${BROWSER_AGENT_CONTEXT_LENGTH:-32768}
+      BROWSER_AGENT_MAX_INPUT_TOKENS: ${BROWSER_AGENT_MAX_INPUT_TOKENS:-32000}
+      BROWSER_WORKER_SOCKET: /run/fogg-browser/worker.sock
+      BROWSER_AGENT_MAX_CONCURRENT_TASKS: ${BROWSER_AGENT_MAX_CONCURRENT_TASKS:-1}
+      BROWSER_AGENT_TASK_TIMEOUT_SECONDS: ${BROWSER_AGENT_TASK_TIMEOUT_SECONDS:-300}
+      FOGG_TRACING_ENABLED: ${FOGG_TRACING_ENABLED:-true}
+      FOGG_TRACING_ENDPOINT: ${COMPOSE_AGENT_TRACING_ENDPOINT:-http://phoenix:6006/v1/traces}
+      FOGG_TRACING_PROJECT: ${FOGG_TRACING_PROJECT:-fogg-dev}
+      FOGG_TRACING_HIDE_IO: "true"
+    volumes:
+      - browser_worker_socket:/run/fogg-browser
+    depends_on:
+      browser-worker:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+      ollama-models:
+        condition: service_completed_successfully
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 128
+    mem_limit: 1g
+    cpus: 1.0
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:18081/health', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 10s
+
+  browser-worker:
+    build:
+      context: .
+      dockerfile: docker/browser-worker/Dockerfile
+    network_mode: none
+    environment:
+      BROWSER_WORKER_SOCKET: /run/fogg-browser/worker.sock
+      BROWSER_PROXY_SOCKET: /run/browser-proxy/proxy.sock
+      BROWSER_WORKER_MAX_TASK_SECONDS: ${BROWSER_WORKER_MAX_TASK_SECONDS:-300}
+      BROWSER_WORKER_ACTION_LIMIT: ${BROWSER_WORKER_ACTION_LIMIT:-80}
+      BROWSER_WORKER_OPERATION_TIMEOUT_MS: ${BROWSER_WORKER_OPERATION_TIMEOUT_MS:-10000}
+      BROWSER_PROFILE_DIR: /browser-profile
+      BROWSER_USER_AGENT: ${BROWSER_USER_AGENT:-}
+      BROWSER_ACCEPT_LANGUAGE: ${BROWSER_ACCEPT_LANGUAGE:-}
+      BROWSER_DNT: ${BROWSER_DNT:-}
+      BROWSER_SEC_CH_UA: ${BROWSER_SEC_CH_UA:-}
+      BROWSER_SEC_CH_UA_MOBILE: ${BROWSER_SEC_CH_UA_MOBILE:-}
+      BROWSER_SEC_CH_UA_PLATFORM: ${BROWSER_SEC_CH_UA_PLATFORM:-}
+    volumes:
+      - browser_worker_socket:/run/fogg-browser
+      - browser_proxy_socket:/run/browser-proxy:ro
+      - browser_recordings:/recordings
+      - browser_profile:/browser-profile
+    depends_on:
+      browser-proxy:
+        condition: service_healthy
+    read_only: true
+    init: true
+    tmpfs:
+      - /tmp:size=512m,mode=1777
+      - /dev/shm:size=256m,mode=1777
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+      - seccomp=./deploy/chromium-seccomp.json
+    pids_limit: 256
+    mem_limit: 2g
+    cpus: 2.0
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; s=socket.socket(socket.AF_UNIX); s.settimeout(1); s.connect('/run/fogg-browser/worker.sock'); s.close()"]
+      interval: 5s
+      timeout: 2s
+      retries: 10
+      start_period: 10s
+
+  browser-proxy:
+    build:
+      context: .
+      dockerfile: docker/browser-proxy/Dockerfile
+    environment:
+      BROWSER_PROXY_SOCKET_PATH: /run/browser-proxy/proxy.sock
+      BROWSER_PROXY_MAX_CONNECTIONS: ${BROWSER_PROXY_MAX_CONNECTIONS:-64}
+      BROWSER_PROXY_DENY_HOSTS: ${BROWSER_PROXY_DENY_HOSTS:?Set BROWSER_PROXY_DENY_HOSTS in .env}
+    volumes:
+      - browser_proxy_socket:/run/browser-proxy
+    networks: [proxy_egress]
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 64
+    mem_limit: 512m
+    cpus: 1.0
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; s=socket.socket(socket.AF_UNIX); s.settimeout(1); s.connect('/run/browser-proxy/proxy.sock'); s.close()"]
+      interval: 5s
+      timeout: 2s
+      retries: 10
+      start_period: 5s
 
 volumes:
   phoenix_data:
+  browser_worker_socket:
+  browser_proxy_socket:
+  browser_recordings:
+  browser_profile:
+
+networks:
+  research_api:
+    internal: true
+  model_internal:
+    internal: true
+  tracing_internal:
+    internal: true
+  proxy_egress:
+    driver: bridge

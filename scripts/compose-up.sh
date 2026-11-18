@@ -15,12 +15,12 @@ compose_profile_services() {
   # Return a space-separated service list for docker compose up.
   case "$1" in
     full)
-      # Full stack: agent runs in Docker.
-      printf '%s' 'ollama redis postgres phoenix agent'
+      # Master and isolated browser research stack run in Docker.
+      printf '%s' 'ollama redis postgres phoenix agent browser-research browser-worker browser-proxy'
       ;;
     debug-agent)
-      # Infra run agent on host (scripts/run-agent-debug.sh).
-      printf '%s' 'ollama redis postgres phoenix'
+      # Master runs on host; browser research remains private except loopback API.
+      printf '%s' 'ollama redis postgres phoenix browser-research browser-worker browser-proxy'
       ;;
     *)
       return 1
@@ -33,7 +33,7 @@ compose_list_profiles() {
   cat <<'EOF'
 Profiles:
   full         All Compose services (agent in Docker).
-  debug-agent  Compose without agent; use scripts/run-agent-debug.sh on the host.
+  debug-agent  Compose research/browser services; run scripts/run-agent-debug.sh on the host.
 
 Usage:
   ./scripts/compose-up.sh <profile> [--build] [-d] ...
@@ -62,5 +62,9 @@ SERVICES="$(compose_profile_services "$PROFILE")" || {
 }
 
 read -r -a SVC <<<"$SERVICES"
-echo "Profile: $PROFILE → docker compose up $* ${SVC[*]}" >&2
-exec docker compose up "$@" "${SVC[@]}"
+COMPOSE_FILES=()
+if [[ "$PROFILE" == "debug-agent" ]]; then
+  COMPOSE_FILES=(-f docker-compose.yml -f deploy/docker-compose.debug-agent.yml)
+fi
+echo "Profile: $PROFILE → docker compose ${COMPOSE_FILES[*]} up $* ${SVC[*]}" >&2
+exec docker compose "${COMPOSE_FILES[@]}" up "$@" "${SVC[@]}"

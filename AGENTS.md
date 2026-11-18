@@ -2,9 +2,9 @@
 
 Read this file first for repo layout, entrypoints, and where human-facing docs live.
 
-**Last updated:** 2026-11-15
+**Last updated:** 2026-11-17
 
-**Last Python review:** 2026-11-09 — agent `master_agt/` layout store, thread routes, chat/SSE, Postgres checkpoints.
+**Last Python review:** 2026-11-09 — agent `master_agt/` harness, thread routes, chat/SSE, Postgres checkpoints. Browser worker changes on 2026-11-17 are covered by focused offline tests; this is not a repo-wide review.
 
 ## What this repo is
 
@@ -114,24 +114,24 @@ Use **Postman** (Google Maps Platform workspace) for API exploration — not che
 
 ## Agents directory
 
-[`agent/`](agent/README.md) — LangGraph ReAct harness (`master_agt` package at `agent/src/master_agt/`). From **repo root**: `uv sync`; optional `cp agent/.env-template agent/.env`; `uv run uvicorn api.app:app` (or `./scripts/run-agent-debug.sh`). API contract: [`docs/agent-api.md`](docs/agent-api.md). Package map (under `agent/src/master_agt/`):
+[`agent/`](agent/README.md) — LangGraph ReAct harness (`master_agt` package at `agent/src/master_agt/`). From **repo root**: `uv sync`; optional `cp agent/.env-template agent/.env`; `uv run uvicorn api.app:app` (or `./scripts/run-agent-debug.sh`). API contract: [`docs/agent-api.md`](docs/agent-api.md). Package map (under `agent/src/`):
 
 | Module | Role |
 |--------|------|
-| `master_agt/routes/` | `/v1` health and user-scoped chat, SSE, messages, layout, and user-actions; `chat_handlers.py` and `chat_messages.py` split chat orchestration/history routes |
-| `master_agt/agent.py`, `master_agt/graph_utils/` | `create_agent` + lazy `get_graph()`; graph state, nodes, and tools |
-| `agent_utils/` | Shared database URL, environment loading, and request-scoped context helpers |
-| `layout/` | Independent layout store, sync, and map viewport functionality |
+| `api/routes/` | `/v1` health and user-scoped chat, SSE, messages, layout, and user-actions; `chat_handlers.py` and `chat_messages.py` split chat orchestration/history routes |
+| `master_agt/` | Master travel agent prompts, state, nodes, tools, and lazy `get_graph()` |
+| `browser_agt/` | Task-scoped research graph/service, remote Unix-socket browser client, Chromium worker, and runtime |
+| `agent_utils/` | Shared database URL, environment loading, request context, checkpointer, model factory/token counting, and LangGraph node builders |
 | `gmaps/` | Google Maps client package (import name: `gmaps`) |
 | `api/app.py`, `api/main.py`, `api/routes/`, `api/messages/` | FastAPI service/lifespan, Uvicorn entrypoints, HTTP routes, and transcript endpoint handling |
 | `api/dev_reset.py` | Development-only data reset behavior |
-| `master_agt/layout/` | Postgres layout rows, models, hashing/sync rules, client context, user actions, and `map_set_viewport` tool implementation (`_tool.py`) |
-| `master_agt/messages/history.py` | Checkpoint-backed transcript history for the client |
+| `layout/` | Postgres layout rows, models, hashing/sync rules, client context, user actions, and `map_set_viewport` tool implementation (`_tool.py`) |
+| `api/messages/store.py` | Checkpoint-backed transcript history for the client |
 | `agent_utils/checkpointing.py` | `AsyncPostgresSaver` checkpointer |
 
 LangGraph Studio: `cd agent && uv run langgraph dev` (needs Postgres URL like uvicorn).
 
-### Docker (Redis + Postgres + Ollama + Phoenix + agent service + backend stub)
+### Docker (Redis + Postgres + Ollama + Phoenix + master, research, browser worker, and proxy services)
 
 Both `full` and `debug-agent` profiles include local Phoenix tracing, available at
 `http://127.0.0.1:16006` by default (`COMPOSE_PORT_PHOENIX`). Trace data persists
@@ -140,3 +140,5 @@ in the `phoenix_data` volume. The agent exports LangGraph spans using
 for settings and how to disable tracing.
 
 From **repo root**: `./scripts/compose-up.sh full --build` (or **`debug-agent`** + **`scripts/run-agent-debug.sh`** for host agent with reload; **`--list-profiles`**). **Ollama** uses **`gpus: all`** (needs [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html); see [`deploy/README.md`](deploy/README.md)) — comment that line out for CPU-only. Published host ports default to **16379** (redis), **15432** (postgres), **11434** (Ollama), **18080** (agent), **18000** (backend stub) — override with `COMPOSE_PORT_*` in [`.env`](deploy/compose.env.example). The Svelte dev server reads **`FRONTEND_WEB_PORT_DEBUG`** and **`AGENT_API_BASE_URL`** from root **`.env`**. The stack includes **Ollama**; the agent container gets **`COMPOSE_AGENT_OPENAI_BASE_URL`** (default **`http://ollama:11434/v1`**) mapped to **`OPENAI_BASE_URL`**, so host **`.env`** `OPENAI_BASE_URL` does not break Docker. For host-only Ollama: `COMPOSE_AGENT_OPENAI_BASE_URL=http://host.docker.internal:11434/v1`. Local agent (no Docker): `127.0.0.1:11434`.
+
+The isolated browser worker runs headed Google Chrome under Xvfb. It has no Docker network; browser egress still passes through `browser-proxy`. Its dedicated persistent profile lives in the Docker `browser_profile` volume and is shared serially across research jobs. Never mount a personal desktop Chrome profile into the worker.

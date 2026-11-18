@@ -12,10 +12,13 @@ COPY agent/src/layout ./agent/src/layout
 COPY agent/src/api ./agent/src/api
 COPY agent/src/agent_utils ./agent/src/agent_utils
 COPY agent/src/master_agt ./agent/src/master_agt
+COPY agent/src/browser_agt ./agent/src/browser_agt
 
 RUN uv sync --frozen --no-dev
+RUN useradd --create-home --uid 10001 fogg && chown -R fogg:fogg /app
 
 COPY . .
+USER fogg
 
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app
@@ -26,4 +29,4 @@ ENV AGENT_INTERNAL_PORT=8080
 EXPOSE 8080
 
 # Compose sets AGENT_INTERNAL_PORT to match the right side of ports: mapping.
-CMD ["sh", "-c", "uv run uvicorn api.app:app --host 0.0.0.0 --port ${AGENT_INTERNAL_PORT:-8080}"]
+CMD ["sh", "-c", "uv run --no-sync uvicorn api.app:app --host 0.0.0.0 --port ${AGENT_INTERNAL_PORT:-8080}"]

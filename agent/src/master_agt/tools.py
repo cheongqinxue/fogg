@@ -413,6 +413,7 @@ def echo_destination(name: str) -> str:
 
 def get_tools():
     """Return async tools registered with the model and ToolNode."""
+    from master_agt.browser_tool import research_web
 
     return [
         places_text_search,
@@ -421,5 +422,6 @@ def get_tools():
         routes_compute,
         routes_compute_matrix,
         map_set_viewport,
+        research_web,
         echo_destination,
     ]

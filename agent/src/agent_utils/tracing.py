@@ -6,12 +6,21 @@ import asyncio
 import os
 
 from openinference.instrumentation.langchain import LangChainInstrumentor
+from openinference.instrumentation import TraceConfig
+from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 _provider: TracerProvider | None = None
+
+
+def get_tracer(name: str):
+    """Return a tracer from the configured provider, including custom compact spans."""
+    if _provider is not None:
+        return _provider.get_tracer(name)
+    return trace.get_tracer(name)
 
 
 def init_tracing() -> None:
@@ -23,10 +32,25 @@ def init_tracing() -> None:
         return
     endpoint = os.environ.get("FOGG_TRACING_ENDPOINT", "http://127.0.0.1:16006/v1/traces")
     project = os.environ.get("FOGG_TRACING_PROJECT", "fogg-dev")
+    hide_io = os.environ.get("FOGG_TRACING_HIDE_IO", "false").lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
     provider = TracerProvider(resource=Resource.create({"openinference.project.name": project}))
     provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint)))
     try:
-        LangChainInstrumentor().instrument(tracer_provider=provider)
+        instrument_kwargs = {"tracer_provider": provider}
+        if hide_io:
+            instrument_kwargs["config"] = TraceConfig(
+                hide_inputs=True,
+                hide_outputs=True,
+                hide_input_images=True,
+                hide_input_text=True,
+                hide_output_text=True,
+            )
+        LangChainInstrumentor().instrument(**instrument_kwargs)
     except BaseException:
         provider.shutdown()
         raise

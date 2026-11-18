@@ -12,6 +12,7 @@ from langchain_core.messages.base import message_to_dict, messages_to_dict
 from pydantic import BaseModel, Field
 
 from master_agt.agent import get_graph
+from master_agt.browser_tool import browser_research_turn
 from layout import client_command_from_tool_output
 from layout.client_context import ClientContextPayload
 from layout.store import get_layout_head, get_or_create_thread_layout
@@ -91,6 +92,8 @@ def _tool_output_text(output: Any) -> str | None:
 
 
 def _map_astream_events(raw_event: dict[str, Any]) -> list[dict[str, Any]]:
+    if "browser_internal" in (raw_event.get("tags") or []):
+        return []
     kind = raw_event.get("event")
     data = raw_event.get("data") or {}
     name = raw_event.get("name")
@@ -175,9 +178,10 @@ async def run_chat_turn(user_id: str, request: ChatRequest) -> dict[str, Any]:
             client_context=request.client_context,
         )
         await append_message(user_id, "user", request.message)
-        result = await get_graph().ainvoke(
-            {"messages": messages}, config=_langgraph_config(user_id)
-        )
+        with browser_research_turn(messages):
+            result = await get_graph().ainvoke(
+                {"messages": messages}, config=_langgraph_config(user_id)
+            )
         assistant_text = _final_assistant_text(result)
         if assistant_text is not None:
             await append_message(user_id, "assistant", assistant_text)
@@ -198,15 +202,16 @@ async def stream_chat_events(user_id: str, request: ChatRequest) -> AsyncIterato
     token = request_user_id.set(user_id)
     assistant_parts: list[str] = []
     try:
-        async for raw_event in graph.astream_events(
-            {"messages": messages},
-            config=_langgraph_config(user_id),
-            version="v2",
-        ):
-            for payload_obj in _map_astream_events(raw_event):
-                if payload_obj.get("type") == "assistant_delta":
-                    assistant_parts.append(payload_obj["delta"])
-                yield _sse_data(payload_obj)
+        with browser_research_turn(messages):
+            async for raw_event in graph.astream_events(
+                {"messages": messages},
+                config=_langgraph_config(user_id),
+                version="v2",
+            ):
+                for payload_obj in _map_astream_events(raw_event):
+                    if payload_obj.get("type") == "assistant_delta":
+                        assistant_parts.append(payload_obj["delta"])
+                    yield _sse_data(payload_obj)
         if assistant_parts:
             await append_message(user_id, "assistant", "".join(assistant_parts))
         yield _sse_data(await _assistant_done_payload(user_id))
