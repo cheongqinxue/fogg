@@ -78,6 +78,14 @@ Production startup requires FOGG migrations to be current. The LangGraph
 checkpointer still initializes its own separately managed tables. The FOGG
 pool is shared by profile, transcript, layout, and tool configuration queries.
 
+Trips belong to accounts and may have several itinerary versions. Each version
+stores ordered home, activity, and route steps. A trip can select one version
+from its own versions. The planning workflow will validate complete paths before
+saving them.
+
+With `FOGG_ENV=dev` and `IDENTITY_BACKEND=password`, API startup creates the
+debug login `user@fogg.com` with password `password` if that email is unused.
+
 To exercise baseline bootstrap against local Postgres, set
 `FOGG_TEST_POSTGRES_URL` and run `uv run pytest agent/tests/test_database.py`.
 The tests create and remove isolated schemas.

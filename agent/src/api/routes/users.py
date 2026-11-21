@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from backend.itineraries import SavedItineraries, list_saved_itineraries
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from layout.models import (
@@ -26,6 +27,15 @@ from api.messages.history import (
 from api.routes.chat_handlers import ChatRequest, chat_stream_response, run_chat_turn
 
 router = APIRouter(prefix="/users", tags=["users"])
+
+
+@router.get("/{account_id}/itineraries", response_model=SavedItineraries)
+async def get_user_itineraries(
+    account_id: str,
+    verified_account_id: str = Depends(authenticated_account_id),
+) -> SavedItineraries:
+    """List saved itinerary summaries for the authenticated account."""
+    return await list_saved_itineraries(require_path_account_id(account_id, verified_account_id))
 
 
 @router.get("/{account_id}/messages", response_model=MessageHistoryResponse)

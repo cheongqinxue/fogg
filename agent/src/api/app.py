@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+from backend.accounts import seed_debug_account
 from backend.database import init_database, shutdown_database
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -26,6 +27,7 @@ async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
     try:
         init_tracing()
         await init_database()
+        await seed_debug_account()
         await init_checkpointer()
         await backfill_checkpoint_transcripts(get_checkpointer())
         agent_module.reset_graph_for_tests()

@@ -10,6 +10,7 @@ from secrets import compare_digest, token_bytes, token_urlsafe
 from uuid import UUID
 
 from psycopg import AsyncConnection
+from utils.settings import get_settings
 
 from backend.database import get_pool
 from backend.profiles import BioDetails, ImmigrationDetails
@@ -59,6 +60,51 @@ async def _issue_session(conn: AsyncConnection, account_id: UUID) -> Session:
     return session
 
 
+async def _create_password_account(
+    conn: AsyncConnection, email: str, salt: bytes, password_hash: bytes
+) -> UUID:
+    cursor = await conn.execute("INSERT INTO users DEFAULT VALUES RETURNING account_id")
+    account_id = (await cursor.fetchone())["account_id"]
+    cursor = await conn.execute(
+        """
+        INSERT INTO user_password_credentials (account_id, email, password_salt, password_hash)
+        VALUES (%s, %s, %s, %s) ON CONFLICT (email) DO NOTHING
+        """,
+        (account_id, email, salt, password_hash),
+    )
+    if cursor.rowcount == 0:
+        raise EmailAlreadyRegistered
+    return account_id
+
+
+async def seed_debug_account() -> None:
+    """Create the development login once without issuing a session."""
+    settings = get_settings()
+    if settings.fogg_env != "dev" or settings.identity_backend != "password":
+        return
+
+    email = "user@fogg.com"
+    async with get_pool().connection() as conn:
+        cursor = await conn.execute(
+            "SELECT 1 FROM user_password_credentials WHERE email = %s", (email,)
+        )
+        if await cursor.fetchone() is not None:
+            return
+
+    salt = token_bytes(16)
+    password_hash = await _hash_password("password", salt)
+    try:
+        async with get_pool().connection() as conn:
+            account_id = await _create_password_account(conn, email, salt, password_hash)
+            await conn.execute(
+                "INSERT INTO user_bio_details (account_id, name) VALUES (%s, %s)",
+                (account_id, "Debug User"),
+            )
+    except EmailAlreadyRegistered:
+        # Another startup created the account. The losing transaction rolls back.
+        pass
+
+
 async def register_account(
     email: str, password: str, bio: BioDetails, immigration_statuses: list[ImmigrationDetails]
 ) -> Session:
@@ -66,18 +112,7 @@ async def register_account(
     salt = token_bytes(16)
     password_hash = await _hash_password(password, salt)
     async with get_pool().connection() as conn:
-        cursor = await conn.execute("INSERT INTO users DEFAULT VALUES RETURNING account_id")
-        account_id = (await cursor.fetchone())["account_id"]
-        cursor = await conn.execute(
-            """
-            INSERT INTO user_password_credentials (account_id, email, password_salt, password_hash)
-            VALUES (%s, %s, %s, %s) ON CONFLICT (email) DO NOTHING
-            """,
-            (account_id, email, salt, password_hash),
-        )
-        if cursor.rowcount == 0:
-            raise EmailAlreadyRegistered
-
+        account_id = await _create_password_account(conn, email, salt, password_hash)
         await conn.execute(
             """
             INSERT INTO user_bio_details

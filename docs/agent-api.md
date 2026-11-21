@@ -95,7 +95,18 @@ The **browser client must not** call backend services directly (Google Maps, tri
 | `POST` | `/v1/users/{account_id}/layout/sync` | Layout reconcile (user/agent deltas or full config) — [ ] Agent · [x] UI |
 | `GET` | `/v1/users/{account_id}/layout` | Optional lightweight revision / hash check — [ ] Agent · [x] UI |
 | `GET` | `/v1/users/{account_id}/messages` | User/assistant transcript for UI restore — [x] Agent · [x] UI |
+| `GET` | `/v1/users/{account_id}/itineraries` | Saved itinerary summaries grouped by trip |
 | `DELETE` | `/v1/users/{account_id}/messages` | Clear transcript and LangGraph thread history; preserve layout |
+
+### Saved itineraries
+
+`GET /v1/users/{account_id}/itineraries` returns an object with a `trips`
+array. Only trips owned by the authenticated account and having at least one
+saved itinerary appear. Each trip includes `trip_id`, `name`, nullable ISO
+dates `starts_on` and `ends_on`, nullable `head_itinerary_version_id`, and an
+`itineraries` array. Each itinerary has an `itinerary_version_id`, nullable
+`name`, and a `status` of `valid`, `broken`, or `superseded`. The selected
+version appears first, followed by versions in descending version order.
 
 ### Tool readiness
 

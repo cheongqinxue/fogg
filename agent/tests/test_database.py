@@ -9,7 +9,7 @@ from datetime import date
 from uuid import uuid4
 
 import pytest
-from backend.accounts import login_external_account
+from backend.accounts import login_external_account, seed_debug_account
 from backend.database import get_pool, init_database, shutdown_database
 from backend.migrate import migrate_database
 from backend.profiles import (
@@ -21,7 +21,7 @@ from backend.profiles import (
 )
 from psycopg import AsyncConnection, sql
 from psycopg.conninfo import make_conninfo
-from psycopg.errors import CheckViolation
+from psycopg.errors import CheckViolation, ForeignKeyViolation
 
 
 @pytest.fixture
@@ -110,6 +110,77 @@ async def test_bootstrap_and_profile_persistence(
         profile = await get_profile(account_key)
         assert profile is not None
         assert profile.preference_summary == "Prefers rail"
+    finally:
+        await shutdown_database()
+
+
+@pytest.mark.integration
+async def test_itinerary_snapshot_belongs_to_trip(isolated_database_url: str) -> None:
+    await migrate_database(isolated_database_url)
+    async with await AsyncConnection.connect(isolated_database_url) as conn:
+        cursor = await conn.execute("INSERT INTO users DEFAULT VALUES RETURNING account_id")
+        (account_id,) = await cursor.fetchone()
+        cursor = await conn.execute(
+            "INSERT INTO trips (account_id, name) VALUES (%s, 'Nagano'), (%s, 'Busan') "
+            "RETURNING trip_id, status",
+            (account_id, account_id),
+        )
+        (trip_id, status), (other_trip_id, _) = await cursor.fetchall()
+        assert status == "draft"
+        cursor = await conn.execute(
+            "INSERT INTO itinerary_versions (trip_id, version_number) VALUES (%s, 1) "
+            "RETURNING itinerary_version_id",
+            (trip_id,),
+        )
+        (version_id,) = await cursor.fetchone()
+        await conn.execute(
+            "INSERT INTO itinerary_version_steps VALUES (%s, 1, 'home', '{\"name\": \"Home\"}')",
+            (version_id,),
+        )
+        with pytest.raises(ForeignKeyViolation):
+            async with conn.transaction():
+                await conn.execute(
+                    "UPDATE trips SET head_itinerary_version_id = %s WHERE trip_id = %s",
+                    (version_id, other_trip_id),
+                )
+        await conn.execute(
+            "UPDATE trips SET head_itinerary_version_id = %s WHERE trip_id = %s",
+            (version_id, trip_id),
+        )
+        await conn.execute("DELETE FROM trips WHERE trip_id = %s", (trip_id,))
+        cursor = await conn.execute("SELECT count(*) FROM itinerary_version_steps")
+        assert await cursor.fetchone() == (0,)
+
+
+@pytest.mark.integration
+async def test_debug_account_seed(
+    isolated_database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from httpx import ASGITransport, AsyncClient
+    from utils.settings import reset_settings_for_tests
+
+    monkeypatch.setenv("AGENT_DATABASE_URL", isolated_database_url)
+    monkeypatch.setenv("FOGG_ENV", "test")
+    monkeypatch.setenv("IDENTITY_BACKEND", "password")
+    from api.app import app
+
+    await init_database()
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            credentials = {"email": "user@fogg.com", "password": "password"}
+            await seed_debug_account()
+            assert (await client.post("/v1/auth/login", json=credentials)).status_code == 401
+
+            monkeypatch.setenv("FOGG_ENV", "dev")
+            reset_settings_for_tests()
+            await asyncio.gather(seed_debug_account(), seed_debug_account())
+            async with get_pool().connection() as conn:
+                cursor = await conn.execute("SELECT count(*) AS total FROM users")
+                assert (await cursor.fetchone())["total"] == 1
+                cursor = await conn.execute("SELECT count(*) AS total FROM user_sessions")
+                assert (await cursor.fetchone())["total"] == 0
+            response = await client.post("/v1/auth/login", json=credentials)
+            assert response.status_code == 200
     finally:
         await shutdown_database()
 

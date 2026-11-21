@@ -103,3 +103,45 @@ CREATE TABLE account_identities (
 );
 
 CREATE INDEX account_identities_account_id_idx ON account_identities (account_id);
+
+CREATE TABLE trips (
+    trip_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    account_id UUID NOT NULL REFERENCES users(account_id) ON DELETE CASCADE,
+    name TEXT NOT NULL CHECK (btrim(name) <> ''),
+    starts_on DATE,
+    ends_on DATE,
+    status TEXT NOT NULL DEFAULT 'draft'
+        CHECK (status IN ('draft', 'planned', 'booked', 'in_progress', 'completed')),
+    head_itinerary_version_id UUID,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CHECK (ends_on >= starts_on)
+);
+
+CREATE INDEX trips_account_id_idx ON trips (account_id);
+
+CREATE TABLE itinerary_versions (
+    itinerary_version_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    trip_id UUID NOT NULL REFERENCES trips(trip_id) ON DELETE CASCADE,
+    version_number INTEGER NOT NULL CHECK (version_number > 0),
+    name TEXT CHECK (btrim(name) <> ''),
+    status TEXT NOT NULL DEFAULT 'valid'
+        CHECK (status IN ('valid', 'broken', 'superseded')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (trip_id, version_number),
+    UNIQUE (trip_id, itinerary_version_id)
+);
+
+ALTER TABLE trips ADD CONSTRAINT trips_head_itinerary_version_fkey
+    FOREIGN KEY (trip_id, head_itinerary_version_id)
+    REFERENCES itinerary_versions (trip_id, itinerary_version_id)
+    ON DELETE SET NULL (head_itinerary_version_id);
+
+CREATE TABLE itinerary_version_steps (
+    itinerary_version_id UUID NOT NULL
+        REFERENCES itinerary_versions(itinerary_version_id) ON DELETE CASCADE,
+    sequence INTEGER NOT NULL CHECK (sequence > 0),
+    kind TEXT NOT NULL CHECK (kind IN ('home', 'activity', 'route')),
+    details JSONB NOT NULL CHECK (jsonb_typeof(details) = 'object'),
+    PRIMARY KEY (itinerary_version_id, sequence)
+);
