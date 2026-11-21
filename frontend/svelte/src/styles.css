@@ -15,6 +15,20 @@
   --panel: rgba(15, 22, 24, 0.93);
   --line: rgba(228, 244, 237, 0.12);
 }
+.auth-map { position: fixed; inset: 0; z-index: 0; pointer-events: none; filter: grayscale(35%) brightness(0.84); }
+.auth-screen { position: relative; z-index: 1; height: 100dvh; overflow: auto; display: grid; justify-items: center; }
+.auth-card { display: flex; flex-direction: column; justify-content: center; width: min(840px, 100%); min-height: 100dvh; padding: clamp(32px, 7vw, 80px); border-radius: 0; background: rgba(26, 41, 38, 0.9); color: #edf4f1; }
+.auth-card > form, .auth-card > .auth-google, .auth-card > .auth-switch { width: 100%; max-width: 400px; margin-left: auto; margin-right: auto; }
+.auth-card > .auth-google, .auth-card > .auth-switch { display: block; }
+.auth-card > h1, .auth-card > h2 { text-align: center; }
+.auth-card h1 { margin: 0; font-size: 28px; }.auth-card h1 span { color: #82d7b8; }.auth-card h2 { font-size: 18px; margin: 16px 0; }
+.auth-card form, .auth-card label { display: grid; gap: 8px; }.auth-card form { gap: 17px; }.auth-card label, .auth-card small { font-size: 13px; }
+.auth-card input, .auth-card select { width: 100%; padding: 12px; border: 1px solid #647e72; border-radius: 7px; color: #edf4f1; background: #101b1a; }
+.auth-card button { cursor: pointer; border: 1px solid #647e72; border-radius: 7px; padding: 9px; color: #edf4f1; background: transparent; }.auth-card button:disabled { opacity: .5; cursor: not-allowed; }
+.auth-card .auth-submit { color: #101b1a; background: #a6e6cf; font-weight: 700; }.auth-google, .auth-switch { width: 100%; margin-top: 10px; }.auth-google span { font-weight: 700; margin-right: 8px; }.auth-google small { margin-left: 6px; }
+.auth-card fieldset { border: 1px solid #647e72; border-radius: 8px; }.auth-status-row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; margin-bottom: 8px; align-items: end; }.auth-error { color: #ffc5b8; }.auth-notice { position: fixed; z-index: 3000; top: 10px; left: 10px; background: #542b29; padding: 10px; }
+.auth-logout { border: 0; border-radius: 8px; padding: 8px; color: #edf4f1; background: rgba(15,22,24,.85); cursor: pointer; }
+.auth-google svg { vertical-align: middle; margin-right: 8px; }
 * {
   box-sizing: border-box;
 }

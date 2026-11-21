@@ -1,7 +1,7 @@
 <script lang="ts">
   import "leaflet/dist/leaflet.css";
   import "../styles.css";
-  import App from "../App.svelte";
+  import AuthGate from "../components/AuthGate.svelte";
 </script>
 
-<App />
+<AuthGate />

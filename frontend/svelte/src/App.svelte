@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { Compass, LocateFixed, Map, Navigation } from "@lucide/svelte";
+  import { Compass, LocateFixed, LogOut, Map, Navigation } from "@lucide/svelte";
   import ChatPanel from "./components/ChatPanel.svelte";
   import MapView from "./components/MapView.svelte";
   import {
@@ -12,7 +12,6 @@
     syncLayout,
     viewportFromLayout,
     viewportPayload,
-    USER_ID,
   } from "./lib/agent";
   import { loadLayout, saveLayout, withViewport } from "./lib/layout";
   import { parseRoutes } from "./lib/routes";
@@ -29,7 +28,10 @@
     Viewport,
   } from "./lib/types";
 
+  let { accountId, onLogout }: { accountId: string; onLogout: () => Promise<void> } = $props();
+
   let messages = $state<ChatMessage[]>([]);
+  let confirmSignOut = $state(false);
   let places = $state<MapPlace[]>([]);
   let routes = $state<MapRoute[]>([]);
   let toolActivity = $state<ToolActivity[]>([]);
@@ -93,7 +95,7 @@
 
   async function hydrate(): Promise<void> {
     const generation = historyGeneration;
-    cache = await loadLayout(USER_ID);
+    cache = await loadLayout(accountId);
     viewport = viewportFromLayout(cache.layout);
     await Promise.all([
       fetchHistory()
@@ -136,7 +138,7 @@
       cache = updated;
     });
     clearTimeout(localTimer);
-    localTimer = setTimeout(() => saveLayout(USER_ID, cache), 220);
+    localTimer = setTimeout(() => saveLayout(accountId, cache), 220);
     clearTimeout(viewportTimer);
     viewportTimer = setTimeout(() => {
       void reportViewport(next);
@@ -153,11 +155,11 @@
       if (!result.accepted) {
         syncStatus = "conflict";
         viewport = viewportFromLayout(result.layout);
-        saveLayout(USER_ID, cache);
+        saveLayout(accountId, cache);
         return;
       }
       syncStatus = "ok";
-      saveLayout(USER_ID, cache);
+      saveLayout(accountId, cache);
     } catch {
       syncStatus = "offline";
     }
@@ -174,7 +176,7 @@
     cache = result;
     viewport = viewportFromLayout(result.layout);
     syncStatus = "ok";
-    saveLayout(USER_ID, cache);
+    saveLayout(accountId, cache);
   }
 
   function toggleExpanded(): void {
@@ -309,7 +311,7 @@
             event.layout_revision !== cache.revision
           ) {
             cache = { ...cache, revision: event.layout_revision };
-            saveLayout(USER_ID, cache);
+            saveLayout(accountId, cache);
           }
         }
       }
@@ -372,14 +374,14 @@
     };
     viewport = next;
     cache = await withViewport(cache, next);
-    saveLayout(USER_ID, cache);
+    saveLayout(accountId, cache);
     try {
       cache = await syncLayout({
         client_revision: cache.revision,
         applied: { command_id: event.command_id, ok: true },
       });
       syncStatus = "ok";
-      saveLayout(USER_ID, cache);
+      saveLayout(accountId, cache);
     } catch {
       syncStatus = "offline";
     }
@@ -404,6 +406,7 @@
   <div class="map-wash"></div>
 
   <div class="topbar">
+    <button class="auth-logout" type="button" onclick={() => { confirmSignOut = true; }} aria-label="Sign out" title="Sign out"><LogOut size={17} /></button>
     <a class="wordmark" href="/" aria-label="FOGG home"
       ><span class="logo-symbol"><Compass size={20} strokeWidth={1.6} /></span
       >fogg<span class="wordmark-period">.</span></a
@@ -443,6 +446,7 @@
       {apiStatus}
       onRefreshTools={refreshToolReadiness}
       onClear={clearConversation}
+      onRequestSignOut={() => { confirmSignOut = true; }}
       {loadingHistory}
       loadingOlder={loadingOlderHistory}
       hasOlderMessages={hasOlderHistory}
@@ -455,3 +459,13 @@
 
   <div class="map-brand"><Map size={13} /> Map data © OpenStreetMap</div>
 </main>
+{#if confirmSignOut}
+  <div class="confirm-overlay">
+    <div class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="signout-title" tabindex="-1">
+      <h2 id="signout-title">Sign out?</h2>
+      <p>You’ll need to sign in again to continue.</p>
+      <button type="button" onclick={() => { confirmSignOut = false; }}>Cancel</button>
+      <button type="button" onclick={async () => { confirmSignOut = false; await onLogout(); }}>Sign out</button>
+    </div>
+  </div>
+{/if}

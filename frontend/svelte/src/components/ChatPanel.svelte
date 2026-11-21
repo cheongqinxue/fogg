@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick } from "svelte";
+  import { onMount, tick } from "svelte";
   import { fade } from "svelte/transition";
   import { marked } from "marked";
   import DOMPurify from "dompurify";
@@ -38,6 +38,7 @@
     onLoadOlder,
     onSend,
     onClear,
+    onRequestSignOut,
   }: {
     messages: ChatMessage[];
     expanded: boolean;
@@ -56,6 +57,7 @@
     onLoadOlder?: () => Promise<void>;
     onSend: (message: string) => Promise<void>;
     onClear: () => Promise<void>;
+    onRequestSignOut: () => void;
   } = $props();
 
   let draft = $state("");
@@ -134,12 +136,13 @@
       }];
     });
   });
-  const slashItems = $derived<SlashItem[]>([{ id: "clear", title: "clear", description: "Clear conversation history", disabled: sending, action: openClear }, {
+  const slashItems = $derived<SlashItem[]>([{ id: "clear", title: "clear", description: "Clear conversation history", disabled: sending, action: openClear }, { id: "signout", title: "signout", description: "Sign out of your account", action: () => { slashDismissed = true; draft = ""; onRequestSignOut(); } }, {
     id: "tools", title: "tools", description: "View tool configuration",
     children: toolReadiness.length ? toolGroups : [{ id: "unavailable", title: apiStatus === "loading" ? "Checking tools…" : "API server unavailable", description: "Refresh tool status to try again", action: () => void onRefreshTools() }],
   }]);
   let transcript: HTMLDivElement;
   let composer: HTMLTextAreaElement;
+  onMount(() => { composer?.focus({ preventScroll: true }); });
   let hasOverflow = $state(false);
   let nearBottom = true;
   let requestingOlder = false;

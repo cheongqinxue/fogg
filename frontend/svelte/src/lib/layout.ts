@@ -3,7 +3,7 @@ import { defaultLayout } from "./types";
 import { sha256 } from "@noble/hashes/sha256";
 import { bytesToHex } from "@noble/hashes/utils";
 
-const keyFor = (userId: string) => `fogg.layout.v1.${userId}`;
+const keyFor = (accountId: string) => `fogg.layout.v1.${accountId}`;
 
 function canonical(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
@@ -22,9 +22,9 @@ export async function layoutHash(layout: LayoutDocument): Promise<string> {
   return bytesToHex(sha256(bytes));
 }
 
-export async function loadLayout(userId: string): Promise<LayoutCache> {
+export async function loadLayout(accountId: string): Promise<LayoutCache> {
   try {
-    const cached = localStorage.getItem(keyFor(userId));
+    const cached = localStorage.getItem(keyFor(accountId));
     if (cached) {
       const decoded = JSON.parse(cached) as LayoutCache;
       if (decoded.layout?.schema_version === 1) return decoded;
@@ -36,9 +36,9 @@ export async function loadLayout(userId: string): Promise<LayoutCache> {
   return { revision: 0, layout_hash: await layoutHash(layout), layout };
 }
 
-export function saveLayout(userId: string, cache: LayoutCache): void {
+export function saveLayout(accountId: string, cache: LayoutCache): void {
   try {
-    localStorage.setItem(keyFor(userId), JSON.stringify(cache));
+    localStorage.setItem(keyFor(accountId), JSON.stringify(cache));
   } catch {
     // Browser storage may be disabled; keep the session usable in memory.
   }

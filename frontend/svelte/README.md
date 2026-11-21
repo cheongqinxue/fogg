@@ -6,7 +6,7 @@ Requires Node.js 20+ and npm.
 
 Chat streams can include `evaluation_progress` events with a wave ID, phase and status, and `evaluation_comment` events with a wave ID and display-safe comment. Progress appears alongside tool activity; comments appear above the composer for two seconds. Internal evaluation details and failures are not displayed.
 
-The clear button and `/clear` open a confirmation slider. Completing it deletes the user's conversation via `DELETE /v1/users/{user_id}/messages`; the saved map layout is retained. Map movement is persisted through the layout sync API.
+The clear button and `/clear` open a confirmation slider. Completing it deletes the user's conversation via `DELETE /v1/users/{account_id}/messages`; the saved map layout is retained. Map movement is persisted through the layout sync API.
 
 ## Run locally
 
@@ -16,15 +16,13 @@ npm install
 npm run dev
 ```
 
-The default development port is `8081`. The app reads `AGENT_API_BASE_URL` from the repo root `.env` (default `http://127.0.0.1:18080`) and uses `AGENT_USER_ID` when set (default `fogg-local-user`, the local identity UID). API requests include a bearer token: in development the default is the dummy `fogg-local-dummy-token`. You can override these values in a local `frontend/svelte/.env.local` file:
+The default development port is `8081`. The app reads `AGENT_API_BASE_URL` from the repo root `.env` (default `http://127.0.0.1:18080`). You can override it in a local `frontend/svelte/.env.local` file:
 
 ```dotenv
 VITE_AGENT_API_BASE_URL=http://127.0.0.1:18080
-VITE_AGENT_USER_ID=fogg-local-user
-VITE_AGENT_BEARER_TOKEN=fogg-local-dummy-token
 ```
 
-These values are embedded in browser code and are not secrets. The dummy token does not authenticate a user; production authentication must obtain a real user token at runtime and use its UID in the API path. Production builds have no default token. The agent's CORS configuration must permit the `Authorization` header. When opening the dev UI from a phone on your LAN, set the API URL to the development computer's LAN address (for example, `http://192.168.1.20:18080`), not `127.0.0.1`; the agent must be reachable from the phone and allow the frontend origin. Use HTTPS endpoints when the deployed site uses HTTPS.
+Sign in or create an account to access the app. The bearer token is stored in session storage for the current browser tab and verified with the agent before restoring a session; the verified account ID determines API and layout-cache paths. Sign-out revokes the session. Google sign-in is not yet available. The agent's CORS configuration must permit the `Authorization` header. When opening the dev UI from a phone on your LAN, set the API URL to the development computer's LAN address (for example, `http://192.168.1.20:18080`); the agent must be reachable from the phone and allow the frontend origin. Use HTTPS endpoints when the deployed site uses HTTPS.
 
 ## Build
 

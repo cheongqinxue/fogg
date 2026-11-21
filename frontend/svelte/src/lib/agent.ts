@@ -14,15 +14,64 @@ import { layoutHash } from "./layout";
 const API_BASE = (
   import.meta.env.VITE_AGENT_API_BASE_URL || "http://127.0.0.1:18080"
 ).replace(/\/$/, "");
-export const USER_ID = import.meta.env.VITE_AGENT_USER_ID || "fogg-local-user";
-const userPath = `/v1/users/${encodeURIComponent(USER_ID)}`;
-const DEV_TOKEN = import.meta.env.DEV ? "fogg-local-dummy-token" : "";
+let session: { accountId: string; token: string } | null = null;
+export function setAgentSession(value: { accountId: string; token: string } | null): void { session = value; }
+function userPath(): string {
+  if (!session) throw new AgentError("Please sign in.");
+  return `/v1/users/${encodeURIComponent(session.accountId)}`;
+}
 
 function agentFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers);
-  const token = import.meta.env.VITE_AGENT_BEARER_TOKEN || DEV_TOKEN;
+  const token = session?.token;
   if (token) headers.set("Authorization", `Bearer ${token}`);
   return fetch(`${API_BASE}${path}`, { ...init, headers });
+}
+
+export interface AuthSession { accountId: string; token: string; expiresAt: string }
+const SESSION_KEY = "fogg.auth.session";
+
+export async function authenticate(mode: "login" | "register", body: Record<string, unknown>): Promise<AuthSession> {
+  const response = await fetch(`${API_BASE}/v1/auth/${mode}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (!response.ok) throw new AgentError(mode === "login" ? "Sign-in failed. Check your details and try again." : "Account creation failed. Check your details and try again.");
+  const data: unknown = await response.json();
+  if (!data || typeof data !== "object") throw new AgentError("Invalid authentication response.");
+  const row = data as Record<string, unknown>;
+  if (typeof row.account_id !== "string" || !row.account_id || typeof row.access_token !== "string" || !row.access_token || typeof row.expires_at !== "string") throw new AgentError("Invalid authentication response.");
+  const value = { accountId: row.account_id, token: row.access_token, expiresAt: row.expires_at };
+  setAgentSession(value);
+  try { await verifySession(); sessionStorage.setItem(SESSION_KEY, JSON.stringify(value)); }
+  catch (error) { setAgentSession(null); throw error; }
+  return value;
+}
+
+async function verifySession(): Promise<string> {
+  const response = await agentFetch("/v1/auth/session");
+  if (!response.ok) throw new AgentError("Session verification failed. Please sign in again.");
+  const data: unknown = await response.json();
+  if (!data || typeof data !== "object" || typeof (data as { account_id?: unknown }).account_id !== "string" || (data as { account_id: string }).account_id !== session?.accountId) throw new AgentError("Session verification failed. Please sign in again.");
+  return session.accountId;
+}
+
+export async function restoreSession(): Promise<AuthSession | null> {
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+    const value = JSON.parse(raw) as AuthSession;
+    if (typeof value.accountId !== "string" || !value.accountId || typeof value.token !== "string" || !value.token || typeof value.expiresAt !== "string") throw new Error("Invalid session");
+    setAgentSession(value);
+    await verifySession();
+    return value;
+  } catch { setAgentSession(null); sessionStorage.removeItem(SESSION_KEY); return null; }
+}
+
+export async function logout(): Promise<void> {
+  try {
+    const response = await agentFetch("/v1/auth/session", { method: "DELETE" });
+    if (!response.ok) throw new AgentError("Could not sign out. Please try again.");
+  } catch { throw new AgentError("Could not sign out. Please try again."); }
+  setAgentSession(null);
+  sessionStorage.removeItem(SESSION_KEY);
 }
 
 export class AgentError extends Error {}
@@ -75,7 +124,7 @@ async function requestJson(
 
 export async function fetchHistory(cursor?: string): Promise<MessageHistoryPage> {
   const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : "";
-  const body = await requestJson(`${userPath}/messages${query}`);
+  const body = await requestJson(`${userPath()}/messages${query}`);
   if (!Array.isArray(body.messages))
     return { messages: [], has_more: false, next_cursor: null };
   const messages = body.messages.flatMap((item: unknown): ChatMessage[] => {
@@ -109,7 +158,7 @@ export async function fetchHistory(cursor?: string): Promise<MessageHistoryPage>
 }
 
 export async function clearHistory(): Promise<void> {
-  const response = await agentFetch(`${userPath}/messages`, { method: "DELETE" });
+  const response = await agentFetch(`${userPath()}/messages`, { method: "DELETE" });
   if (!response.ok) throw new AgentError(`Could not clear conversation (HTTP ${response.status}).`);
 }
 
@@ -117,7 +166,7 @@ export async function* streamChat(
   message: string,
   clientContext: Record<string, unknown>,
 ): AsyncGenerator<StreamEvent> {
-  const response = await agentFetch(`${userPath}/chat/stream`, {
+  const response = await agentFetch(`${userPath()}/chat/stream`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json; charset=utf-8",
@@ -168,7 +217,7 @@ export async function* streamChat(
 export async function syncLayout(
   body: Record<string, unknown>,
 ): Promise<LayoutSyncResult> {
-  return (await requestJson(`${userPath}/layout/sync`, {
+  return (await requestJson(`${userPath()}/layout/sync`, {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify(body),
