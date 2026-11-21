@@ -15,6 +15,7 @@ from typing import Any, Literal
 
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
 from utils.settings import get_settings
 
 KMSBackend = Literal["local", "google"]
@@ -51,12 +52,12 @@ def _get_backend() -> KMSBackend:
 
 
 def _additional_authenticated_data(
-    uid: str,
+    owner_id: str,
     group: str,
     additional_context: dict[str, str] | None,
 ) -> bytes:
-    if not uid or not uid.strip():
-        raise ValueError("uid must be a non-empty string")
+    if not owner_id or not owner_id.strip():
+        raise ValueError("owner_id must be a non-empty string")
     if not group or not group.strip():
         raise ValueError("group must be a non-empty string")
 
@@ -66,12 +67,12 @@ def _additional_authenticated_data(
     ):
         raise TypeError("additional_context must contain only string keys and values")
     if {"uid", "group"}.intersection(context):
-        raise ValueError("additional_context cannot override reserved 'uid' or 'group' fields")
+        raise ValueError("additional_context cannot override reserved identity or group fields")
 
     return json.dumps(
         {
             "domain": "fogg.secret.v1",
-            "uid": uid,
+            "uid": owner_id,  # Stable field name in the v1 ciphertext format.
             "group": group,
             "additional_context": context,
         },
@@ -148,18 +149,18 @@ def _unpack_envelope(value: str) -> dict[str, Any]:
 
 async def encrypt_secret(
     plaintext: str,
-    uid: str,
+    owner_id: str,
     group: str,
     additional_context: dict[str, str] | None = None,
 ) -> str:
     """Encrypt a secret and bind it to its owner/group/context using AAD.
 
-    ``uid`` should identify the secret's actual owner (for example, a workspace
+    ``owner_id`` should identify the secret's actual owner (for example, a workspace
     ID for a workspace-shared credential), and ``group`` should be a stable
     purpose/provider label. Neither value nor ``additional_context`` is secret.
     """
     plaintext_bytes = plaintext.encode("utf-8")
-    aad = _additional_authenticated_data(uid, group, additional_context)
+    aad = _additional_authenticated_data(owner_id, group, additional_context)
     if len(plaintext_bytes) + len(aad) > _MAX_PLAINTEXT_BYTES:
         raise ValueError("plaintext plus authenticated context must not exceed 8 KiB")
 
@@ -189,12 +190,12 @@ async def encrypt_secret(
 
 async def decrypt_secret(
     ciphertext: str,
-    uid: str,
+    owner_id: str,
     group: str,
     additional_context: dict[str, str] | None = None,
 ) -> str:
     """Decrypt a secret only when the supplied owner/group/context match."""
-    aad = _additional_authenticated_data(uid, group, additional_context)
+    aad = _additional_authenticated_data(owner_id, group, additional_context)
     envelope = _unpack_envelope(ciphertext)
     backend = _get_backend()
     if envelope["backend"] != backend:

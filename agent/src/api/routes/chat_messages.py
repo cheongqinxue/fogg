@@ -3,21 +3,20 @@
 from __future__ import annotations
 
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
-
 from layout.client_context import ClientContextPayload, format_client_context_digest
 
 
 async def build_turn_messages(
     *,
     message: str,
-    user_id: str,
+    account_id: str,
     client_context: ClientContextPayload | None = None,
 ) -> list[BaseMessage]:
     """Return messages to append for this turn (context digest + user text).
 
     Args:
         message: User text for this turn.
-        user_id: Conversation partition key (LangGraph ``thread_id``).
+        account_id: Conversation partition key (LangGraph ``thread_id``).
         client_context: Optional layout/sync hint from the client.
 
     Returns:
@@ -25,7 +24,7 @@ async def build_turn_messages(
     """
     messages: list[BaseMessage] = []
     if client_context is not None:
-        digest = await format_client_context_digest(user_id, client_context)
+        digest = await format_client_context_digest(account_id, client_context)
         messages.append(
             SystemMessage(
                 content=digest,

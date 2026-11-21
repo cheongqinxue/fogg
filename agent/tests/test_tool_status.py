@@ -1,21 +1,20 @@
 from __future__ import annotations
 
-import pytest
-from fastapi import HTTPException
-from httpx import ASGITransport, AsyncClient
-from pydantic import SecretStr
-
-from api.app import app
 import api.routes.tool_status as status_module
+import pytest
+from api.app import app
 from api.routes.tool_status import (
     CredentialUpdateRequest,
+    ToolActiveRequest,
     ToolStatus,
     ToolStatusResponse,
-    ToolActiveRequest,
     build_tool_status,
     update_tool_active_state,
     update_tool_credentials,
 )
+from fastapi import HTTPException
+from httpx import ASGITransport, AsyncClient
+from pydantic import SecretStr
 from utils.settings import AppSettings
 
 
@@ -163,8 +162,8 @@ async def test_credential_save_replaces_per_provider_without_returning_secret(
 ) -> None:
     saved: list[tuple[str, str, str]] = []
 
-    async def save(uid: str, credentials: dict[str, str]) -> None:
-        saved.extend((uid, provider, key) for provider, key in credentials.items())
+    async def save(account_id: str, credentials: dict[str, str]) -> None:
+        saved.extend((account_id, provider, key) for provider, key in credentials.items())
 
     monkeypatch.setattr(status_module, "save_provider_credentials", save)
     request = CredentialUpdateRequest(credentials={"tavily": SecretStr("new-secret")})
@@ -180,6 +179,7 @@ async def test_credential_save_replaces_per_provider_without_returning_secret(
 async def test_tool_status_endpoint_needs_no_external_service_calls(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setenv("IDENTITY_BACKEND", "local")
     _use_empty_user_config(monkeypatch)
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://testserver"

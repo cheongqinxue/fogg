@@ -5,11 +5,11 @@ from __future__ import annotations
 from typing import Any
 
 from langchain_core.messages import SystemMessage, trim_messages
+from utils.langgraph import build_model_node as _build_model_node
+from utils.request_context import request_account_id
 
 from master.tool_execution import PriorityToolExecutor
 from master.tools import get_active_tools, get_tools
-from utils.request_context import request_user_id
-from utils.langgraph import build_model_node as _build_model_node
 
 
 def build_model_node(
@@ -23,7 +23,7 @@ def build_model_node(
 
     async def select_tools():
         return await get_active_tools(
-            request_user_id.get(), tools=get_tools() if tools is None else tools
+            request_account_id.get(None), tools=get_tools() if tools is None else tools
         )
 
     model_node = _build_model_node(
@@ -74,7 +74,7 @@ def build_tool_node(
     registered_tools = list(get_tools() if tools is None else tools)
 
     async def select_active_tools(candidate_tools):
-        return await get_active_tools(request_user_id.get(), tools=candidate_tools)
+        return await get_active_tools(request_account_id.get(None), tools=candidate_tools)
 
     executor = PriorityToolExecutor(
         registered_tools,

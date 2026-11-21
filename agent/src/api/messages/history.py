@@ -6,10 +6,11 @@ from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel
+from utils.checkpointing import checkpoint_thread_id
 
 from api.messages.store import (
     decode_cursor,
-    delete_thread_messages,
+    delete_user_messages,
     encode_cursor,
     list_messages,
 )
@@ -40,7 +41,7 @@ class ClearHistoryResponse(BaseModel):
     layout_preserved: bool = True
 
 
-async def list_ui_messages(user_id: str, cursor: str | None = None) -> MessageHistoryResponse:
+async def list_ui_messages(account_id: str, cursor: str | None = None) -> MessageHistoryResponse:
     """Return up to 50 persisted messages, newest page by default.
 
     ``cursor`` points to the oldest message in the preceding page. The next
@@ -48,7 +49,7 @@ async def list_ui_messages(user_id: str, cursor: str | None = None) -> MessageHi
     oldest → newest for direct transcript rendering.
     """
     before_id = decode_cursor(cursor) if cursor is not None else None
-    rows, has_more = await list_messages(user_id, before_id)
+    rows, has_more = await list_messages(account_id, before_id)
     messages = [
         UiMessage(
             id=str(row["id"]),
@@ -62,8 +63,8 @@ async def list_ui_messages(user_id: str, cursor: str | None = None) -> MessageHi
     return MessageHistoryResponse(messages=messages, has_more=has_more, next_cursor=next_cursor)
 
 
-async def clear_ui_history(thread_id: str, checkpointer: Any) -> ClearHistoryResponse:
+async def clear_ui_history(account_id: str, checkpointer: Any) -> ClearHistoryResponse:
     """Clear a user's LangGraph thread and UI transcript, leaving layout intact."""
-    await checkpointer.adelete_thread(thread_id)
-    removed = await delete_thread_messages(thread_id)
+    await checkpointer.adelete_thread(await checkpoint_thread_id(account_id))
+    removed = await delete_user_messages(account_id)
     return ClearHistoryResponse(cleared=True, transcript_messages_removed=removed)

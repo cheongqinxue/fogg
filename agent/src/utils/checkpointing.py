@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from contextlib import suppress
 from typing import TYPE_CHECKING
+from uuid import UUID
+
+from backend.database import get_pool_if_initialized
 
 from utils.settings import get_settings
 
@@ -51,7 +54,7 @@ async def init_checkpointer() -> BaseCheckpointSaver:
     )
     try:
         await pool.open(wait=True)
-        saver = AsyncPostgresSaver(pool)
+        saver = AsyncPostgresSaver(pool)  # ty: ignore[invalid-argument-type]
         await saver.setup()
     except BaseException:
         # Preserve the initialization error if cleanup itself fails.
@@ -71,3 +74,28 @@ async def shutdown_checkpointer() -> None:
     _CHECKPOINTER_POOL = None
     if pool is not None:
         await pool.close()
+
+
+async def clear_all_checkpoint_threads() -> None:
+    """Clear all checkpoint data for the development reset endpoint."""
+    if _CHECKPOINTER_POOL is None:
+        raise RuntimeError("Checkpointer not initialized.")
+    async with _CHECKPOINTER_POOL.connection() as conn:
+        await conn.execute("TRUNCATE TABLE checkpoint_writes, checkpoint_blobs, checkpoints")
+
+
+async def checkpoint_thread_id(account_id: str) -> str:
+    """Resolve checkpoint IDs retained from before accounts owned chat state."""
+    pool = get_pool_if_initialized()
+    try:
+        key = UUID(account_id)
+    except ValueError:
+        return account_id
+    if pool is None:
+        return account_id
+    async with pool.connection() as conn:
+        cursor = await conn.execute(
+            "SELECT legacy_subject FROM users WHERE account_id = %s", (key,)
+        )
+        row = await cursor.fetchone()
+    return (row["legacy_subject"] if row else None) or account_id

@@ -2,20 +2,13 @@
 
 import logging
 
+import fakeredis.aioredis
 import httpx
 import pytest
-import fakeredis.aioredis
-from redis.exceptions import ConnectionError as RedisConnectionError
-from redis.exceptions import TimeoutError as RedisTimeoutError
-from pydantic import ValidationError
-from pytest import LogCaptureFixture
-from tenacity import wait_fixed
-
 from gmaps.errors import GmapsQuotaExceededError, GoogleMapsApiError
 from gmaps.quota.caps import SKU_FREE_CAP
-from gmaps.quota.store import RedisUsageStore
+from gmaps.quota.store import RedisUsageStore, reset_usage_store_for_tests
 from gmaps.quota.types import BillableEvent
-from utils.redis_client import set_async_redis_client_for_tests
 from gmaps.requests import (
     PlacesAutocompleteRequest,
     PlacesGetRequest,
@@ -25,10 +18,6 @@ from gmaps.requests import (
     RoutesComputeRouteMatrixRequest,
     RoutesComputeRoutesRequest,
 )
-from gmaps.requests.places import Circle, LocationRestriction
-from gmaps.requests.places_billing import place_details_sku, text_search_sku
-from gmaps.requests.routes import RouteMatrixWaypoint, Waypoint
-from gmaps.requests.sku import BillableSKU
 from gmaps.requests._google_json import LatLng
 from gmaps.requests.base import (
     close_http_client,
@@ -36,19 +25,30 @@ from gmaps.requests.base import (
     requests_base_max_attempts,
     requests_base_max_retries,
 )
+from gmaps.requests.places import Circle, LocationRestriction
+from gmaps.requests.places_billing import place_details_sku, text_search_sku
+from gmaps.requests.routes import RouteMatrixWaypoint, Waypoint
+from gmaps.requests.sku import BillableSKU
 from gmaps.response_cache import build_cache_key
+from pydantic import ValidationError
+from pytest import LogCaptureFixture
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import TimeoutError as RedisTimeoutError
+from tenacity import wait_fixed
+from utils.redis_client import set_async_redis_client_for_tests
 from utils.settings import get_settings
-from gmaps.quota.store import reset_usage_store_for_tests
 
 BASE_LOGGER = "gmaps.requests.base"
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("account_context")
 async def test_text_search_circle_restriction_filters_outside_and_requests_location(monkeypatch):
     import json
-    from gmaps.tools import places_text_search
-    from gmaps.requests.search_fields import TEXT_SEARCH_PRO_MASK
+
     from gmaps.requests.places import PlacesTextSearchRequest
+    from gmaps.requests.search_fields import TEXT_SEARCH_PRO_MASK
+    from gmaps.tools import places_text_search
 
     seen = []
 
@@ -82,10 +82,11 @@ async def test_text_search_circle_restriction_filters_outside_and_requests_locat
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("account_context")
 async def test_agent_search_tools_use_pro_masks(monkeypatch):
-    from gmaps.tools import places_search_nearby, places_text_search
     from gmaps.requests.places import PlacesSearchNearbyRequest, PlacesTextSearchRequest
     from gmaps.requests.search_fields import NEARBY_SEARCH_PRO_MASK, TEXT_SEARCH_PRO_MASK
+    from gmaps.tools import places_search_nearby, places_text_search
 
     captured = []
 
@@ -131,13 +132,14 @@ async def test_agent_search_tools_use_pro_masks(monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("account_context")
 async def test_all_agent_tools_hide_masks_and_use_code_owned_fields(monkeypatch):
-    from master.tools import get_tools
-    from gmaps.tools import places_get, routes_compute, routes_compute_matrix
     from gmaps.requests.places import PlacesGetRequest
     from gmaps.requests.route_fields import MATRIX_MASK, ROUTE_MASK, ROUTE_OPTIMIZED_ORDER_FIELD
+    from gmaps.requests.routes import RoutesComputeRouteMatrixRequest, RoutesComputeRoutesRequest
     from gmaps.requests.search_fields import PLACE_DETAILS_PRO_MASK
-    from gmaps.requests.routes import RoutesComputeRoutesRequest, RoutesComputeRouteMatrixRequest
+    from gmaps.tools import places_get, routes_compute, routes_compute_matrix
+    from master.tools import get_tools
 
     captured = []
 

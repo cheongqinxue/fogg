@@ -39,11 +39,11 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-only-include = ["agent/src/master", "agent/src/api", "agent/src/layout", "agent/src/gmaps", "agent/src/utils", "agent/src/web_search_tool", "backend"]
+only-include = ["agent/src/master", "agent/src/api", "agent/src/layout", "agent/src/gmaps", "agent/src/utils", "agent/src/web_search_tool", "agent/src/backend"]
 
 [tool.hatch.build.targets.wheel.sources]
 "agent/src/gmaps" = "gmaps"
-"backend" = "backend"
+"agent/src/backend" = "backend"
 "agent/src/master" = "master"
 "agent/src/api" = "api"
 "agent/src/layout" = "layout"

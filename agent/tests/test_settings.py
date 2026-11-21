@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import pytest
-
 from utils.settings import AppSettings
 
 
 def test_settings_parse_environment_and_share_database_url(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.delenv("AGENT_DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.setenv("FOGG_ENV", "test")
     monkeypatch.setenv("GMAPS_QUOTA_TRACKING", "true")
     monkeypatch.setenv("GMAPS_QUOTA_WARN_RATIO", "0.65")

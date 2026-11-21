@@ -6,10 +6,10 @@ import os
 import uuid
 
 import pytest
-
+from backend.database import init_database, shutdown_database
 from layout.models import LayoutDocument, LayoutSyncRequest, ProposedDelta
 from layout.service import sync_layout
-from layout.store import get_or_create_thread_layout, init_layout_store, shutdown_layout_store
+from layout.store import get_or_create_user_layout
 
 
 class TestLayoutSync:
@@ -20,14 +20,14 @@ class TestLayoutSync:
     ) -> None:
         if not (os.environ.get("AGENT_DATABASE_URL") or os.environ.get("DATABASE_URL")):
             pytest.skip("DATABASE_URL not set")
-        await init_layout_store()
-        thread_id = f"pytest-{uuid.uuid4()}"
+        await init_database()
+        account_id = f"pytest-{uuid.uuid4()}"
         try:
-            row = await get_or_create_thread_layout(thread_id)
+            row = await get_or_create_user_layout(account_id)
             assert row.revision == 0
 
             response = await sync_layout(
-                thread_id,
+                account_id,
                 LayoutSyncRequest(
                     client_revision=0,
                     proposed_delta=ProposedDelta(
@@ -45,7 +45,7 @@ class TestLayoutSync:
             assert response.layout["map"]["viewport"]["center"]["lat"] == 35.68
 
             stale = await sync_layout(
-                thread_id,
+                account_id,
                 LayoutSyncRequest(
                     client_revision=0,
                     proposed_delta=ProposedDelta(
@@ -58,7 +58,7 @@ class TestLayoutSync:
             assert stale.accepted is False
             assert stale.reject_reason == "stale_revision"
         finally:
-            await shutdown_layout_store()
+            await shutdown_database()
 
     @pytest.mark.integration
     @pytest.mark.asyncio
@@ -66,12 +66,12 @@ class TestLayoutSync:
         """Non-empty pending_deltas is not supported yet."""
         if not (os.environ.get("AGENT_DATABASE_URL") or os.environ.get("DATABASE_URL")):
             pytest.skip("DATABASE_URL not set")
-        await init_layout_store()
-        thread_id = f"pytest-pending-{uuid.uuid4()}"
+        await init_database()
+        account_id = f"pytest-pending-{uuid.uuid4()}"
         try:
-            await get_or_create_thread_layout(thread_id)
+            await get_or_create_user_layout(account_id)
             result = await sync_layout(
-                thread_id,
+                account_id,
                 LayoutSyncRequest(
                     client_revision=0,
                     sync_mode="full",
@@ -82,4 +82,4 @@ class TestLayoutSync:
             assert result.accepted is False
             assert result.reject_reason == "pending_deltas_not_supported"
         finally:
-            await shutdown_layout_store()
+            await shutdown_database()

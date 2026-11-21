@@ -5,10 +5,12 @@ from __future__ import annotations
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from api.routes.users import router as users_router
+from api.routes.account_auth import router as account_auth_router
 from api.routes.tool_status import router as tool_status_router
+from api.routes.users import router as users_router
 
 router = APIRouter(prefix="/v1", tags=["v1"])
+router.include_router(account_auth_router)
 router.include_router(users_router)
 router.include_router(tool_status_router)
 

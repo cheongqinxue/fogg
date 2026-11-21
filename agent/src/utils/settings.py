@@ -29,8 +29,8 @@ class AppSettings(BaseSettings):
     agent_dev_reset_enabled: bool = Field(default=False, validation_alias="AGENT_DEV_RESET_ENABLED")
 
     # Identity Platform
-    identity_backend: Literal["local", "google"] = Field(
-        default="local", validation_alias="IDENTITY_BACKEND"
+    identity_backend: Literal["password", "local", "google"] = Field(
+        default="password", validation_alias="IDENTITY_BACKEND"
     )
     identity_project_id: str = Field(default="", validation_alias="IDENTITY_PROJECT_ID")
 

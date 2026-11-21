@@ -7,10 +7,10 @@ import os
 import uuid
 
 import pytest
-
+from backend.database import init_database, shutdown_database
 from layout.sse import client_command_from_tool_output
+from layout.store import get_or_create_user_layout
 from layout.tools import execute_map_set_viewport_tool
-from layout.store import get_or_create_thread_layout, init_layout_store, shutdown_layout_store
 
 
 class TestMapSetViewport:
@@ -41,12 +41,12 @@ class TestMapSetViewport:
     async def test_apply_updates_layout_and_returns_command(self) -> None:
         if not (os.environ.get("AGENT_DATABASE_URL") or os.environ.get("DATABASE_URL")):
             pytest.skip("DATABASE_URL not set")
-        await init_layout_store()
-        thread_id = f"pytest-mv-{uuid.uuid4()}"
+        await init_database()
+        account_id = f"pytest-mv-{uuid.uuid4()}"
         try:
-            await get_or_create_thread_layout(thread_id)
+            await get_or_create_user_layout(account_id)
             raw = await execute_map_set_viewport_tool(
-                thread_id,
+                account_id,
                 lat=35.68,
                 lng=139.76,
                 zoom=9,
@@ -59,7 +59,7 @@ class TestMapSetViewport:
             assert cmd is not None
             assert cmd["payload"]["zoom"] == 9
 
-            again = await execute_map_set_viewport_tool(thread_id, lat=35.68, lng=139.76, zoom=9)
+            again = await execute_map_set_viewport_tool(account_id, lat=35.68, lng=139.76, zoom=9)
             assert json.loads(again)["status"] == "unchanged"
         finally:
-            await shutdown_layout_store()
+            await shutdown_database()

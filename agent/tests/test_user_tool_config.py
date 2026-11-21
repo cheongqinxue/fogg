@@ -4,13 +4,12 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 import pytest
-
 import utils.user_tool_config as user_tool_config
 
 
 class _Cursor:
     async def fetchone(self):
-        return {"ciphertext": "encrypted-value"}
+        return {"ciphertext": "encrypted-value", "legacy_encryption_owner": None}
 
     async def fetchall(self):
         return []
@@ -46,11 +45,11 @@ async def test_provider_credentials_are_encrypted_before_idempotent_upsert(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     pool = _Pool()
-    monkeypatch.setattr(user_tool_config, "_POOL", pool)
+    monkeypatch.setattr("backend.database._pool", pool)
     encrypted_plaintexts: list[tuple[str, str, str, dict[str, str]]] = []
 
-    async def encrypt(plaintext: str, uid: str, group: str, context: dict[str, str]) -> str:
-        encrypted_plaintexts.append((plaintext, uid, group, context))
+    async def encrypt(plaintext: str, account_id: str, group: str, context: dict[str, str]) -> str:
+        encrypted_plaintexts.append((plaintext, account_id, group, context))
         return "ciphertext-only"
 
     monkeypatch.setattr(user_tool_config, "encrypt_secret", encrypt)
@@ -65,7 +64,7 @@ async def test_provider_credentials_are_encrypted_before_idempotent_upsert(
     ]
     writes = pool.conn.executed
     assert len(writes) == 2
-    assert all("ON CONFLICT (uid, provider) DO UPDATE" in query for query, _ in writes)
+    assert all("ON CONFLICT (account_id, provider) DO UPDATE" in query for query, _ in writes)
     assert all("replacement-key" not in repr(params) for _, params in writes)
     assert all(params[2] == "ciphertext-only" for _, params in writes)
     assert pool.conn.commits == 1
@@ -76,11 +75,11 @@ async def test_user_api_key_is_decrypted_just_in_time_with_bound_context(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     pool = _Pool()
-    monkeypatch.setattr(user_tool_config, "_POOL", pool)
+    monkeypatch.setattr("backend.database._pool", pool)
     decrypt_contexts: list[tuple[str, str, str, dict[str, str]]] = []
 
-    async def decrypt(ciphertext: str, uid: str, group: str, context: dict[str, str]) -> str:
-        decrypt_contexts.append((ciphertext, uid, group, context))
+    async def decrypt(ciphertext: str, account_id: str, group: str, context: dict[str, str]) -> str:
+        decrypt_contexts.append((ciphertext, account_id, group, context))
         return "plaintext-api-key"
 
     monkeypatch.setattr(user_tool_config, "decrypt_secret", decrypt)

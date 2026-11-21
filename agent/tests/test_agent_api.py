@@ -5,12 +5,11 @@ from __future__ import annotations
 import os
 
 import pytest
-from httpx import ASGITransport, AsyncClient
-
-from master.agent import get_graph, reset_graph_for_tests
 from api.app import app
+from backend.database import init_database, shutdown_database
+from httpx import ASGITransport, AsyncClient
+from master.agent import get_graph, reset_graph_for_tests
 from utils.checkpointing import init_checkpointer, shutdown_checkpointer
-from layout.store import init_layout_store, shutdown_layout_store
 
 
 @pytest.fixture
@@ -18,7 +17,7 @@ async def api_client() -> AsyncClient:
     """HTTP client with the same startup/shutdown as ``api.app`` lifespan."""
     if not (os.environ.get("AGENT_DATABASE_URL") or os.environ.get("DATABASE_URL")):
         pytest.skip("DATABASE_URL not set — integration tests require Postgres")
-    await init_layout_store()
+    await init_database()
     await init_checkpointer()
     reset_graph_for_tests()
     get_graph()
@@ -26,7 +25,7 @@ async def api_client() -> AsyncClient:
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         yield client
     await shutdown_checkpointer()
-    await shutdown_layout_store()
+    await shutdown_database()
     reset_graph_for_tests()
 
 
@@ -44,11 +43,11 @@ class TestAgentApi:
             async def adelete_thread(self, thread_id: str) -> None:
                 calls.append(("checkpoint", thread_id))
 
-        async def delete_transcript(thread_id: str) -> int:
-            calls.append(("transcript", thread_id))
+        async def delete_transcript(account_id: str) -> int:
+            calls.append(("transcript", account_id))
             return 4
 
-        monkeypatch.setattr(history, "delete_thread_messages", delete_transcript)
+        monkeypatch.setattr(history, "delete_user_messages", delete_transcript)
 
         response = await history.clear_ui_history("user-123", FakeCheckpointer())
 
@@ -130,11 +129,11 @@ class TestAgentApi:
         """Optional revision query sets client_revision_matches."""
         if not (os.environ.get("AGENT_DATABASE_URL") or os.environ.get("DATABASE_URL")):
             pytest.skip("DATABASE_URL not set")
-        user_id = "fogg-local-user"
-        first = await api_client.get(f"/v1/users/{user_id}/layout")
+        account_id = "00000000-0000-4000-8000-000000000001"
+        first = await api_client.get(f"/v1/users/{account_id}/layout")
         assert first.status_code == 200
         revision = first.json()["revision"]
-        second = await api_client.get(f"/v1/users/{user_id}/layout?revision={revision}")
+        second = await api_client.get(f"/v1/users/{account_id}/layout?revision={revision}")
         assert second.json()["client_revision_matches"] is True
-        third = await api_client.get(f"/v1/users/{user_id}/layout?revision={revision + 99}")
+        third = await api_client.get(f"/v1/users/{account_id}/layout?revision={revision + 99}")
         assert third.json()["client_revision_matches"] is False

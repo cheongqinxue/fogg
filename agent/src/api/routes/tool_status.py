@@ -5,16 +5,16 @@ from __future__ import annotations
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field, SecretStr
-
 from master.tools import get_user_tool_configuration
-from api.auth import authenticated_uid
+from pydantic import BaseModel, Field, SecretStr
 from utils.kms import KMSConfigurationError, KMSOperationError
 from utils.settings import AppSettings, get_settings
 from utils.user_tool_config import (
     save_provider_credentials,
     set_tool_active,
 )
+
+from api.auth import authenticated_account_id
 
 router = APIRouter(tags=["tools"])
 
@@ -67,10 +67,12 @@ class ToolActiveResponse(BaseModel):
     active: bool
 
 
-async def build_tool_status(uid: str, settings: AppSettings | None = None) -> ToolStatusResponse:
+async def build_tool_status(
+    account_id: str, settings: AppSettings | None = None
+) -> ToolStatusResponse:
     """Describe registered tools and per-user credential/activation state."""
     settings = settings or get_settings()
-    configurations = await get_user_tool_configuration(uid, settings=settings)
+    configurations = await get_user_tool_configuration(account_id, settings=settings)
     statuses: list[ToolStatus] = []
     for config in configurations:
         providers = config["providers"]
@@ -102,15 +104,17 @@ async def build_tool_status(uid: str, settings: AppSettings | None = None) -> To
 
 
 @router.get("/tools/status", response_model=ToolStatusResponse)
-async def get_tool_status(uid: str = Depends(authenticated_uid)) -> ToolStatusResponse:
+async def get_tool_status(
+    account_id: str = Depends(authenticated_account_id),
+) -> ToolStatusResponse:
     """Return readiness and active state for the authenticated user's tools."""
-    return await build_tool_status(uid)
+    return await build_tool_status(account_id)
 
 
 @router.put("/tools/credentials", response_model=CredentialUpdateResponse)
 async def update_tool_credentials(
     request: CredentialUpdateRequest,
-    uid: str = Depends(authenticated_uid),
+    account_id: str = Depends(authenticated_account_id),
 ) -> CredentialUpdateResponse:
     """Encrypt and idempotently replace credentials for the authenticated user."""
     try:
@@ -120,7 +124,7 @@ async def update_tool_credentials(
         }
         if any(not api_key for api_key in credentials.values()):
             raise HTTPException(status_code=422, detail="API keys cannot be empty")
-        await save_provider_credentials(uid, credentials)
+        await save_provider_credentials(account_id, credentials)
     except (KMSConfigurationError, KMSOperationError) as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -133,10 +137,10 @@ async def update_tool_credentials(
 async def update_tool_active_state(
     tool_name: str,
     request: ToolActiveRequest,
-    uid: str = Depends(authenticated_uid),
+    account_id: str = Depends(authenticated_account_id),
 ) -> ToolActiveResponse:
     """Persist activation state; key-backed tools cannot be enabled while unconfigured."""
-    status_response = await build_tool_status(uid)
+    status_response = await build_tool_status(account_id)
     tool_status = next((item for item in status_response.tools if item.name == tool_name), None)
     if tool_status is None:
         raise HTTPException(status_code=404, detail="Unknown tool")
@@ -145,5 +149,5 @@ async def update_tool_active_state(
             status_code=409,
             detail="Configure the required provider credential before enabling this tool",
         )
-    await set_tool_active(uid, tool_name, request.active)
+    await set_tool_active(account_id, tool_name, request.active)
     return ToolActiveResponse(name=tool_name, active=request.active)

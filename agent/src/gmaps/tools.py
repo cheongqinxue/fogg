@@ -5,10 +5,11 @@ from __future__ import annotations
 import math
 from typing import Any, Literal
 
-from pydantic import Field, model_validator
-
 from langchain_core.tools import tool
+from pydantic import Field, model_validator
+from utils.request_context import require_request_account_id
 from utils.tools import PrioritizedToolInput, ToolInput, capture_tool_io, serialize_tool_output
+
 from gmaps.requests import (
     PlacesGetRequest,
     PlacesSearchNearbyRequest,
@@ -23,13 +24,13 @@ from gmaps.requests.places import (
     TextSearchBias,
     TextSearchRestriction,
 )
+from gmaps.requests.route_fields import MATRIX_MASK, ROUTE_MASK, ROUTE_OPTIMIZED_ORDER_FIELD
+from gmaps.requests.routes import RouteMatrixWaypoint, Waypoint
 from gmaps.requests.search_fields import (
     NEARBY_SEARCH_PRO_MASK,
     PLACE_DETAILS_PRO_MASK,
     TEXT_SEARCH_PRO_MASK,
 )
-from gmaps.requests.route_fields import MATRIX_MASK, ROUTE_MASK, ROUTE_OPTIMIZED_ORDER_FIELD
-from gmaps.requests.routes import RouteMatrixWaypoint, Waypoint
 
 
 class TextSearchArea(ToolInput):
@@ -194,6 +195,7 @@ async def places_text_search(
     area: dict[str, Any] | None = None,
 ) -> str:
     """Search Places by natural-language query and return matching candidates."""
+    require_request_account_id()
     search_area = TextSearchArea.model_validate(area) if area is not None else None
     bias = None
     restriction = None
@@ -274,6 +276,7 @@ async def places_search_nearby(
     language_code: str | None = None,
 ) -> str:
     """Find places of selected types inside a radius around a coordinate."""
+    require_request_account_id()
     req = PlacesSearchNearbyRequest(
         field_mask=NEARBY_SEARCH_PRO_MASK,
         location_restriction=LocationRestriction(
@@ -293,6 +296,7 @@ async def places_search_nearby(
 @capture_tool_io
 async def places_get(place_id: str) -> str:
     """Fetch requested details for a Google Place ID."""
+    require_request_account_id()
     return serialize_tool_output(
         await PlacesGetRequest(place_id=place_id, field_mask=PLACE_DETAILS_PRO_MASK).call()
     )
@@ -313,6 +317,7 @@ async def routes_compute(
     units: Literal["METRIC", "IMPERIAL"] = "METRIC",
 ) -> str:
     """Compute a route between endpoints, optionally visiting intermediate stops."""
+    require_request_account_id()
     req = RoutesComputeRoutesRequest(
         field_mask=f"{ROUTE_MASK},{ROUTE_OPTIMIZED_ORDER_FIELD}"
         if optimize_waypoint_order
@@ -342,6 +347,7 @@ async def routes_compute_matrix(
     | None = None,
 ) -> str:
     """Compare travel routes for every origin and destination pair."""
+    require_request_account_id()
     req = RoutesComputeRouteMatrixRequest(
         field_mask=MATRIX_MASK,
         origins=[

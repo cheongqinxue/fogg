@@ -1,4 +1,4 @@
-"""User-scoped agent API (chat, layout, map actions)."""
+"""User-scoped agent API (chat and layout)."""
 
 from __future__ import annotations
 
@@ -6,7 +6,6 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
-
 from layout.models import (
     LayoutHead,
     LayoutHeadResponse,
@@ -14,7 +13,10 @@ from layout.models import (
     LayoutSyncResponse,
 )
 from layout.service import sync_layout
-from layout.store import get_layout_head, get_or_create_thread_layout
+from layout.store import get_layout_head, get_or_create_user_layout
+from utils.checkpointing import get_checkpointer
+
+from api.auth import authenticated_account_id, require_path_account_id
 from api.messages.history import (
     ClearHistoryResponse,
     MessageHistoryResponse,
@@ -22,68 +24,69 @@ from api.messages.history import (
     list_ui_messages,
 )
 from api.routes.chat_handlers import ChatRequest, chat_stream_response, run_chat_turn
-from api.auth import authenticated_uid, require_path_uid
-from utils.checkpointing import get_checkpointer
-
 
 router = APIRouter(prefix="/users", tags=["users"])
 
 
-@router.get("/{user_id}/messages", response_model=MessageHistoryResponse)
+@router.get("/{account_id}/messages", response_model=MessageHistoryResponse)
 async def get_user_messages(
-    user_id: str,
-    verified_uid: str = Depends(authenticated_uid),
+    account_id: str,
+    verified_account_id: str = Depends(authenticated_account_id),
     cursor: str | None = Query(
         default=None, description="Opaque cursor for the next 50 older messages."
     ),
 ) -> MessageHistoryResponse:
     """Return the latest 50 persisted transcript messages, or an older page."""
     try:
-        return await list_ui_messages(require_path_uid(user_id, verified_uid), cursor)
+        return await list_ui_messages(
+            require_path_account_id(account_id, verified_account_id), cursor
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@router.delete("/{user_id}/messages", response_model=ClearHistoryResponse)
+@router.delete("/{account_id}/messages", response_model=ClearHistoryResponse)
 async def delete_user_messages(
-    user_id: str,
-    verified_uid: str = Depends(authenticated_uid),
+    account_id: str,
+    verified_account_id: str = Depends(authenticated_account_id),
 ) -> ClearHistoryResponse:
     """Clear transcript and LangGraph history while preserving the saved layout."""
-    return await clear_ui_history(require_path_uid(user_id, verified_uid), get_checkpointer())
+    return await clear_ui_history(
+        require_path_account_id(account_id, verified_account_id), get_checkpointer()
+    )
 
 
-@router.post("/{user_id}/chat")
+@router.post("/{account_id}/chat")
 async def post_user_chat(
-    user_id: str,
+    account_id: str,
     body: ChatRequest,
-    verified_uid: str = Depends(authenticated_uid),
+    verified_account_id: str = Depends(authenticated_account_id),
 ) -> dict[str, Any]:
     """Run one agent turn (full graph until stop)."""
-    return await run_chat_turn(require_path_uid(user_id, verified_uid), body)
+    return await run_chat_turn(require_path_account_id(account_id, verified_account_id), body)
 
 
-@router.post("/{user_id}/chat/stream")
+@router.post("/{account_id}/chat/stream")
 async def post_user_chat_stream(
-    user_id: str,
+    account_id: str,
     body: ChatRequest,
-    verified_uid: str = Depends(authenticated_uid),
+    verified_account_id: str = Depends(authenticated_account_id),
 ) -> StreamingResponse:
     """Stream LangGraph events as Server-Sent Events."""
-    return chat_stream_response(require_path_uid(user_id, verified_uid), body)
+    return chat_stream_response(require_path_account_id(account_id, verified_account_id), body)
 
 
-@router.get("/{user_id}/layout", response_model=LayoutHeadResponse)
+@router.get("/{account_id}/layout", response_model=LayoutHeadResponse)
 async def read_user_layout_head(
-    user_id: str,
-    verified_uid: str = Depends(authenticated_uid),
+    account_id: str,
+    verified_account_id: str = Depends(authenticated_account_id),
     revision: int | None = Query(default=None),
 ) -> LayoutHeadResponse:
     """Return server revision and hash (lightweight desync check)."""
-    uid = require_path_uid(user_id, verified_uid)
-    head = await get_layout_head(uid)
+    account_id = require_path_account_id(account_id, verified_account_id)
+    head = await get_layout_head(account_id)
     if head is None:
-        row = await get_or_create_thread_layout(uid)
+        row = await get_or_create_user_layout(account_id)
         head = LayoutHead(revision=row.revision, layout_hash=row.layout_hash)
     matches = revision == head.revision if revision is not None else None
     return LayoutHeadResponse(
@@ -93,11 +96,11 @@ async def read_user_layout_head(
     )
 
 
-@router.post("/{user_id}/layout/sync", response_model=LayoutSyncResponse)
+@router.post("/{account_id}/layout/sync", response_model=LayoutSyncResponse)
 async def post_user_layout_sync(
-    user_id: str,
+    account_id: str,
     body: LayoutSyncRequest,
-    verified_uid: str = Depends(authenticated_uid),
+    verified_account_id: str = Depends(authenticated_account_id),
 ) -> LayoutSyncResponse:
     """Reconcile client layout deltas or full config with server state."""
-    return await sync_layout(require_path_uid(user_id, verified_uid), body)
+    return await sync_layout(require_path_account_id(account_id, verified_account_id), body)

@@ -9,6 +9,8 @@ import pytest
 from pydantic import ValidationError
 from web_search_tool.tools import web_extract, web_search
 
+pytestmark = pytest.mark.usefixtures("account_context")
+
 
 @pytest.fixture(autouse=True)
 def disable_redis_cache_by_default(monkeypatch):

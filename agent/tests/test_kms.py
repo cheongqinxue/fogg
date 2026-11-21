@@ -5,7 +5,6 @@ import os
 from types import SimpleNamespace
 
 import pytest
-
 from utils import kms
 
 
@@ -30,7 +29,7 @@ async def test_local_kms_round_trips_secret_with_context(local_kms: None) -> Non
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("uid", "group", "context"),
+    ("account_id", "group", "context"),
     [
         ("workspace-2", "web-search", {"provider": "tavily"}),
         ("workspace-1", "maps", {"provider": "tavily"}),
@@ -39,7 +38,7 @@ async def test_local_kms_round_trips_secret_with_context(local_kms: None) -> Non
 )
 async def test_local_kms_rejects_mismatched_context(
     local_kms: None,
-    uid: str,
+    account_id: str,
     group: str,
     context: dict[str, str],
 ) -> None:
@@ -51,7 +50,7 @@ async def test_local_kms_rejects_mismatched_context(
     )
 
     with pytest.raises(kms.KMSDecryptionError):
-        await kms.decrypt_secret(encrypted, uid, group, context)
+        await kms.decrypt_secret(encrypted, account_id, group, context)
 
 
 @pytest.mark.asyncio

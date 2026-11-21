@@ -12,6 +12,7 @@ COPY agent/src/layout ./agent/src/layout
 COPY agent/src/api ./agent/src/api
 COPY agent/src/utils ./agent/src/utils
 COPY agent/src/master ./agent/src/master
+COPY agent/src/backend ./agent/src/backend
 
 RUN uv sync --frozen --no-dev
 

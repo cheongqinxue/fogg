@@ -9,15 +9,16 @@ from typing import Any
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.messages.base import message_to_dict, messages_to_dict
-from pydantic import BaseModel, Field
-
-from master.agent import get_graph
-from layout.sse import client_command_from_tool_output
 from layout.client_context import ClientContextPayload
-from layout.store import get_layout_head, get_or_create_thread_layout
-from utils.request_context import request_user_id
-from api.routes.chat_messages import build_turn_messages
+from layout.sse import client_command_from_tool_output
+from layout.store import get_layout_head, get_or_create_user_layout
+from master.agent import get_graph
+from pydantic import BaseModel, Field
+from utils.checkpointing import checkpoint_thread_id
+from utils.request_context import request_account_id
+
 from api.messages.store import append_message
+from api.routes.chat_messages import build_turn_messages
 
 
 class ChatRequest(BaseModel):
@@ -175,15 +176,15 @@ def _map_astream_events(raw_event: dict[str, Any]) -> list[dict[str, Any]]:
     return []
 
 
-def _langgraph_config(user_id: str) -> dict[str, Any]:
+async def _langgraph_config(account_id: str) -> dict[str, Any]:
     """LangGraph configurable (checkpoint partition key)."""
-    return {"configurable": {"thread_id": user_id}}
+    return {"configurable": {"thread_id": await checkpoint_thread_id(account_id)}}
 
 
-async def _assistant_done_payload(user_id: str) -> dict[str, Any]:
-    head = await get_layout_head(user_id)
+async def _assistant_done_payload(account_id: str) -> dict[str, Any]:
+    head = await get_layout_head(account_id)
     if head is None:
-        row = await get_or_create_thread_layout(user_id)
+        row = await get_or_create_user_layout(account_id)
         return {
             "type": "assistant_done",
             "layout_revision": row.revision,
@@ -196,42 +197,42 @@ async def _assistant_done_payload(user_id: str) -> dict[str, Any]:
     }
 
 
-async def run_chat_turn(user_id: str, request: ChatRequest) -> dict[str, Any]:
+async def run_chat_turn(account_id: str, request: ChatRequest) -> dict[str, Any]:
     """Blocking full graph turn for one user."""
-    token = request_user_id.set(user_id)
+    token = request_account_id.set(account_id)
     try:
         messages = await build_turn_messages(
             message=request.message,
-            user_id=user_id,
+            account_id=account_id,
             client_context=request.client_context,
         )
-        await append_message(user_id, "user", request.message)
+        await append_message(account_id, "user", request.message)
         result = await get_graph().ainvoke(
-            {"messages": messages}, config=_langgraph_config(user_id)
+            {"messages": messages}, config=await _langgraph_config(account_id)
         )
         assistant_text = _final_assistant_text(result)
         if assistant_text is not None:
-            await append_message(user_id, "assistant", assistant_text)
+            await append_message(account_id, "assistant", assistant_text)
         return {"state": serialize_chat_state(result)}
     finally:
-        request_user_id.reset(token)
+        request_account_id.reset(token)
 
 
-async def stream_chat_events(user_id: str, request: ChatRequest) -> AsyncIterator[str]:
+async def stream_chat_events(account_id: str, request: ChatRequest) -> AsyncIterator[str]:
     """SSE frames for one chat turn."""
     graph = get_graph()
     messages = await build_turn_messages(
         message=request.message,
-        user_id=user_id,
+        account_id=account_id,
         client_context=request.client_context,
     )
-    await append_message(user_id, "user", request.message)
-    token = request_user_id.set(user_id)
+    await append_message(account_id, "user", request.message)
+    token = request_account_id.set(account_id)
     assistant_parts: list[str] = []
     try:
         async for raw_event in graph.astream_events(
             {"messages": messages},
-            config=_langgraph_config(user_id),
+            config=await _langgraph_config(account_id),
             version="v2",
         ):
             for payload_obj in _map_astream_events(raw_event):
@@ -239,10 +240,10 @@ async def stream_chat_events(user_id: str, request: ChatRequest) -> AsyncIterato
                     assistant_parts.append(payload_obj["delta"])
                 yield _sse_data(payload_obj)
         if assistant_parts:
-            await append_message(user_id, "assistant", "".join(assistant_parts))
-        yield _sse_data(await _assistant_done_payload(user_id))
+            await append_message(account_id, "assistant", "".join(assistant_parts))
+        yield _sse_data(await _assistant_done_payload(account_id))
     finally:
-        request_user_id.reset(token)
+        request_account_id.reset(token)
 
 
 def _final_assistant_text(result: dict[str, Any]) -> str | None:
@@ -262,10 +263,10 @@ def _final_assistant_text(result: dict[str, Any]) -> str | None:
     return None
 
 
-def chat_stream_response(user_id: str, request: ChatRequest) -> StreamingResponse:
+def chat_stream_response(account_id: str, request: ChatRequest) -> StreamingResponse:
     """StreamingResponse wrapper for chat SSE."""
     return StreamingResponse(
-        stream_chat_events(user_id, request),
+        stream_chat_events(account_id, request),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

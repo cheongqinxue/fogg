@@ -36,11 +36,13 @@ def _viewport_line(viewport: dict) -> str:
     return ", ".join(parts)
 
 
-async def format_client_context_digest(user_id: str, client_context: ClientContextPayload) -> str:
+async def format_client_context_digest(
+    account_id: str, client_context: ClientContextPayload
+) -> str:
     """Build a short system digest from client hint and server layout head.
 
     Args:
-        user_id: Conversation key (for server layout lookup).
+        account_id: Conversation key (for server layout lookup).
         client_context: Client-sent context snapshot.
 
     Returns:
@@ -57,7 +59,7 @@ async def format_client_context_digest(user_id: str, client_context: ClientConte
         f"- UI capabilities: {', '.join(client_context.capabilities) or 'none'}",
     ]
 
-    head = await get_layout_head(user_id)
+    head = await get_layout_head(account_id)
     if head is None:
         lines.append("- server layout: not initialized yet (defaults apply on first sync)")
     else:

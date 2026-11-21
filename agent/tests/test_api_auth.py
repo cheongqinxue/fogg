@@ -1,32 +1,31 @@
 from __future__ import annotations
 
+import api.auth as api_auth
 import pytest
 from fastapi import HTTPException
-
-import api.auth as api_auth
 from utils.identity import IdentityProviderUnavailable
 
 
 @pytest.mark.asyncio
-async def test_authenticated_uid_uses_verified_bearer_token(
+async def test_authenticated_account_id_uses_verified_bearer_token(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     received: list[str | None] = []
 
     async def verify(token: str | None) -> str:
         received.append(token)
-        return "identity-platform-uid"
+        return "identity-platform-user"
 
     monkeypatch.setattr(api_auth, "verify_identity_token", verify)
 
-    uid = await api_auth.authenticated_uid("Bearer signed-token")
+    account_id = await api_auth.authenticated_account_id("Bearer signed-token")
 
-    assert uid == "identity-platform-uid"
+    assert account_id == "identity-platform-user"
     assert received == ["signed-token"]
 
 
 @pytest.mark.asyncio
-async def test_authenticated_uid_rejects_invalid_bearer_token(
+async def test_authenticated_account_id_rejects_invalid_bearer_token(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async def verify(_token: str | None) -> None:
@@ -35,13 +34,13 @@ async def test_authenticated_uid_rejects_invalid_bearer_token(
     monkeypatch.setattr(api_auth, "verify_identity_token", verify)
 
     with pytest.raises(HTTPException) as error:
-        await api_auth.authenticated_uid("Bearer invalid")
+        await api_auth.authenticated_account_id("Bearer invalid")
 
     assert error.value.status_code == 401
 
 
 @pytest.mark.asyncio
-async def test_authenticated_uid_maps_identity_outage_to_service_unavailable(
+async def test_authenticated_account_id_maps_identity_outage_to_service_unavailable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async def verify(_token: str | None) -> None:
@@ -50,22 +49,22 @@ async def test_authenticated_uid_maps_identity_outage_to_service_unavailable(
     monkeypatch.setattr(api_auth, "verify_identity_token", verify)
 
     with pytest.raises(HTTPException) as error:
-        await api_auth.authenticated_uid("Bearer signed-token")
+        await api_auth.authenticated_account_id("Bearer signed-token")
 
     assert error.value.status_code == 503
 
 
-def test_path_uid_must_match_verified_identity() -> None:
-    assert api_auth.require_path_uid("verified-uid", "verified-uid") == "verified-uid"
+def test_path_user_id_must_match_verified_identity() -> None:
+    assert api_auth.require_path_account_id("verified-user", "verified-user") == "verified-user"
 
     with pytest.raises(HTTPException) as error:
-        api_auth.require_path_uid("someone-elses-uid", "verified-uid")
+        api_auth.require_path_account_id("someone-else", "verified-user")
 
     assert error.value.status_code == 403
 
 
-def test_path_uid_rejects_empty_user_id() -> None:
+def test_path_user_id_rejects_empty_user_id() -> None:
     with pytest.raises(HTTPException) as error:
-        api_auth.require_path_uid("  ", "verified-uid")
+        api_auth.require_path_account_id("  ", "verified-user")
 
     assert error.value.status_code == 400

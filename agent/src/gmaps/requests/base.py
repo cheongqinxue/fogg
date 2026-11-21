@@ -9,10 +9,13 @@ from contextlib import asynccontextmanager
 from typing import Any, Generic, TypeVar
 
 import httpx
+from pydantic import BaseModel, ConfigDict
 from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import TimeoutError as RedisTimeoutError
-from pydantic import BaseModel, ConfigDict
 from tenacity import AsyncRetrying, retry_if_exception, stop_after_attempt, wait_exponential_jitter
+from utils.request_context import request_account_id
+from utils.settings import AppSettings, get_settings
+from utils.user_tool_config import get_user_api_key
 
 from gmaps.errors import GmapsQuotaExceededError, GoogleMapsApiError
 from gmaps.quota.caps import SKU_FREE_CAP
@@ -21,9 +24,6 @@ from gmaps.quota.types import BillableEvent
 from gmaps.requests.quota_balance import QuotaBalance
 from gmaps.requests.sku import BillableSKU
 from gmaps.response_cache import get_cached_response, set_cached_response
-from utils.settings import AppSettings, get_settings
-from utils.request_context import request_user_id
-from utils.user_tool_config import get_user_api_key
 
 logger = logging.getLogger(__name__)
 
@@ -279,7 +279,7 @@ class GoogleMapRequest(BaseModel, ABC, Generic[TResponse]):
         return f"Google Maps request failed: {type(exc).__name__}: {exc}"
 
     async def _api_key_header(self) -> dict[str, str]:
-        api_key = await get_user_api_key(request_user_id.get(), "google_maps")
+        api_key = await get_user_api_key(request_account_id.get(None), "google_maps")
         if not api_key:
             msg = "Google Maps API key is not configured for this user"
             raise RuntimeError(msg)

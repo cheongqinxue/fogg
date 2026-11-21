@@ -1,0 +1,1 @@
+"""FOGG Postgres persistence."""

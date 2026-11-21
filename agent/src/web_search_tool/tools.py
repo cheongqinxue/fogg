@@ -7,12 +7,12 @@ from typing import Literal
 from urllib.parse import urlsplit
 
 import httpx
-from utils.tools import PrioritizedToolInput, capture_tool_io, serialize_tool_output
-from utils.settings import get_settings
-from utils.request_context import request_user_id
-from utils.user_tool_config import get_user_api_key
 from langchain_core.tools import tool
 from pydantic import Field, HttpUrl
+from utils.request_context import require_request_account_id
+from utils.settings import get_settings
+from utils.tools import PrioritizedToolInput, capture_tool_io, serialize_tool_output
+from utils.user_tool_config import get_user_api_key
 
 from web_search_tool.cache import get_web_search_cache, web_search_cache_enabled
 from web_search_tool.providers.base import SearchProvider
@@ -53,9 +53,10 @@ def _provider_order() -> list[str]:
 
 
 async def _configured_providers() -> list[SearchProvider]:
+    account_id = require_request_account_id()
     providers: list[SearchProvider] = []
     for name in _provider_order():
-        api_key = await get_user_api_key(request_user_id.get(), name)
+        api_key = await get_user_api_key(account_id, name)
         if api_key:
             providers.append(_PROVIDER_CLASSES[name](api_key))
     return providers

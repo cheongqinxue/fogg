@@ -8,11 +8,12 @@ from typing import Any
 
 from langchain_core.tools import tool
 from pydantic import Field
-from utils.request_context import request_user_id
+from utils.request_context import require_request_account_id
 from utils.tools import PrioritizedToolInput, capture_tool_io
+
 from layout.models import LayoutSyncRequest, ProposedDelta
 from layout.service import sync_layout
-from layout.store import get_or_create_thread_layout
+from layout.store import get_or_create_user_layout
 
 
 class MapSetViewportInput(PrioritizedToolInput):
@@ -54,7 +55,7 @@ def _viewport_matches(
 
 
 async def execute_map_set_viewport_tool(
-    thread_id: str,
+    account_id: str,
     *,
     lat: float,
     lng: float,
@@ -64,7 +65,7 @@ async def execute_map_set_viewport_tool(
     """Update server layout and return JSON for the tool + SSE ``client_command``.
 
     Args:
-        thread_id: Layout / checkpoint key.
+        account_id: Verified identity used to load the user's layout.
         lat: Target latitude (WGS84).
         lng: Target longitude (WGS84).
         zoom: Map zoom; keeps current server zoom when omitted.
@@ -73,7 +74,7 @@ async def execute_map_set_viewport_tool(
     Returns:
         JSON string with ``status``, optional ``command_id``, ``base_revision``, ``payload``.
     """
-    row = await get_or_create_thread_layout(thread_id)
+    row = await get_or_create_user_layout(account_id)
     current_viewport = row.layout.get("map", {}).get("viewport", {})
     target_zoom = float(zoom if zoom is not None else current_viewport.get("zoom", 11.5))
     if _viewport_matches(row.layout, lat, lng, target_zoom):
@@ -87,7 +88,7 @@ async def execute_map_set_viewport_tool(
     viewport_payload = _viewport_payload(lat, lng, target_zoom, label)
     base_revision = row.revision
     layout_result = await sync_layout(
-        thread_id,
+        account_id,
         LayoutSyncRequest(
             client_revision=base_revision,
             proposed_delta=ProposedDelta(
@@ -126,5 +127,5 @@ async def map_set_viewport(
 ) -> str:
     """Move the client map to a useful center and optional zoom."""
     return await execute_map_set_viewport_tool(
-        request_user_id.get(), lat=lat, lng=lng, zoom=zoom, label=label
+        require_request_account_id(), lat=lat, lng=lng, zoom=zoom, label=label
     )

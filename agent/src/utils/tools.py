@@ -14,7 +14,7 @@ from typing import Any, Callable, TypeVar, cast
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from utils.request_context import request_user_id
+from utils.request_context import request_account_id
 from utils.settings import get_settings
 
 F = TypeVar("F", bound=Callable[..., Any])
@@ -75,12 +75,12 @@ def capture_tool_io(function: F) -> F:
         output: Any,
         error: BaseException | None,
     ) -> dict[str, Any]:
-        request_id = request_user_id.get()
+        account_id = request_account_id.get(None)
         return {
             "timestamp": started.isoformat(),
             "duration_ms": round((time.perf_counter() - began) * 1000, 3),
             "tool": name,
-            "caller": {"request_user_id": request_id if request_id != "default" else None},
+            "caller": {"request_account_id": account_id},
             "inputs": arguments,
             "output": output if error is None else None,
             "error": None

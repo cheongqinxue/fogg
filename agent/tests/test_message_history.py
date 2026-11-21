@@ -1,31 +1,41 @@
-"""GET /v1/users/{user_id}/messages."""
+"""GET /v1/users/{account_id}/messages."""
 
 from __future__ import annotations
 
 import os
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
-from httpx import ASGITransport, AsyncClient
 from api.app import app
-from layout.store import init_layout_store, shutdown_layout_store
-from api.messages.store import init_message_store, shutdown_message_store
+from api.auth import authenticated_account_id
+from backend.database import init_database, shutdown_database
+from httpx import ASGITransport, AsyncClient
 
 
 @pytest.fixture
-async def api_client() -> AsyncClient:
-    """HTTP client with the same startup/shutdown as ``api.app`` lifespan."""
+def account_id() -> str:
+    return f"pytest-messages-{uuid.uuid4()}"
+
+
+@pytest.fixture
+async def api_client(account_id: str, monkeypatch: pytest.MonkeyPatch) -> AsyncClient:
+    """HTTP client with an isolated authenticated UID."""
     if not (os.environ.get("AGENT_DATABASE_URL") or os.environ.get("DATABASE_URL")):
         pytest.skip("DATABASE_URL not set — integration tests require Postgres")
-    await init_layout_store()
-    await init_message_store()
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        yield client
-    await shutdown_message_store()
-    await shutdown_layout_store()
+
+    async def verified_account_id() -> str:
+        return account_id
+
+    monkeypatch.setitem(app.dependency_overrides, authenticated_account_id, verified_account_id)
+    await init_database()
+    try:
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            yield client
+    finally:
+        await shutdown_database()
 
 
 class TestMessageHistory:
@@ -43,7 +53,7 @@ class TestMessageHistory:
             {"id": 9, "role": "assistant", "text": "Later", "created_at": timestamp},
         ]
 
-        async def fake_list_messages(_thread_id: str, before_id: int | None = None):
+        async def fake_list_messages(_user_id: str, before_id: int | None = None):
             assert before_id is None
             return rows, True
 
@@ -66,7 +76,7 @@ class TestMessageHistory:
 
         received: list[int | None] = []
 
-        async def fake_list_messages(_thread_id: str, before_id: int | None = None):
+        async def fake_list_messages(_user_id: str, before_id: int | None = None):
             received.append(before_id)
             return [], False
 
@@ -98,14 +108,13 @@ class TestMessageHistory:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from langchain_core.messages import AIMessage
-
         from api.routes import chat_handlers
+        from langchain_core.messages import AIMessage
 
         stored: list[tuple[str, str, str]] = []
 
-        async def fake_append(thread_id: str, role: str, text: str) -> None:
-            stored.append((thread_id, role, text))
+        async def fake_append(account_id: str, role: str, text: str) -> None:
+            stored.append((account_id, role, text))
 
         async def fake_build_turn_messages(**_kwargs):
             return []
@@ -127,9 +136,8 @@ class TestMessageHistory:
 
     @pytest.mark.unit
     def test_legacy_backfill_uses_checkpoint_order_and_times(self) -> None:
-        from langchain_core.messages import AIMessage, HumanMessage
-
         from api.messages.store import _legacy_rows
+        from langchain_core.messages import AIMessage, HumanMessage
 
         old = SimpleNamespace(
             checkpoint={
@@ -162,26 +170,22 @@ class TestMessageHistory:
 
     @pytest.mark.integration
     @pytest.mark.asyncio
-    async def test_list_ui_messages_empty_thread(self, api_client: AsyncClient) -> None:
-        if not (os.environ.get("AGENT_DATABASE_URL") or os.environ.get("DATABASE_URL")):
-            pytest.skip("DATABASE_URL not set")
-        user_id = f"pytest-messages-empty-{uuid.uuid4()}"
-        response = await api_client.get(f"/v1/users/{user_id}/messages")
+    async def test_list_ui_messages_empty_thread(
+        self, api_client: AsyncClient, account_id: str
+    ) -> None:
+        response = await api_client.get(f"/v1/users/{account_id}/messages")
         assert response.status_code == 200
         assert response.json() == {"messages": [], "has_more": False, "next_cursor": None}
 
     @pytest.mark.integration
     @pytest.mark.asyncio
-    async def test_get_messages_http(self, api_client: AsyncClient) -> None:
+    async def test_get_messages_http(self, api_client: AsyncClient, account_id: str) -> None:
         """HTTP route returns independently stored transcript rows with stable metadata."""
-        if not (os.environ.get("AGENT_DATABASE_URL") or os.environ.get("DATABASE_URL")):
-            pytest.skip("DATABASE_URL not set")
-        user_id = f"pytest-messages-http-{uuid.uuid4()}"
         from api.messages.store import append_message
 
-        await append_message(user_id, "user", "User says one")
-        await append_message(user_id, "assistant", "Agent says one")
-        response = await api_client.get(f"/v1/users/{user_id}/messages")
+        await append_message(account_id, "user", "User says one")
+        await append_message(account_id, "assistant", "Agent says one")
+        response = await api_client.get(f"/v1/users/{account_id}/messages")
         assert response.status_code == 200
         body = response.json()
         assert body["has_more"] is False
@@ -192,4 +196,5 @@ class TestMessageHistory:
             "Agent says one",
         ]
         assert all(message["id"] for message in body["messages"])
-        assert all(message["timestamp"].endswith("+00:00") for message in body["messages"])
+        timestamps = [datetime.fromisoformat(message["timestamp"]) for message in body["messages"]]
+        assert all(timestamp.utcoffset() == timedelta(0) for timestamp in timestamps)

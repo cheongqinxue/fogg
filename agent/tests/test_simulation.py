@@ -6,7 +6,6 @@ import re
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.checkpoint.memory import InMemorySaver
-
 from master.simulations.simulation import SimulationError, simulated_tools
 from master.tools import get_tools
 
@@ -236,9 +235,10 @@ async def test_simulated_calls_apply_async_delay_on_success_and_failure(monkeypa
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("account_context")
 async def test_dev_graph_uses_simulated_tool(monkeypatch):
-    from master import agent
     from gmaps.quota.store import reset_usage_store_for_tests
+    from master import agent
 
     class Model:
         def __init__(self):

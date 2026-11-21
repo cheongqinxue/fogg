@@ -8,92 +8,26 @@ import logging
 from datetime import UTC, datetime
 from typing import Any
 
-from psycopg.rows import dict_row
-from psycopg_pool import AsyncConnectionPool
-
-from utils.settings import get_settings
+from backend.database import get_pool
 
 logger = logging.getLogger(__name__)
 PAGE_SIZE = 50
 _BACKFILL_KEY = 0x464F4747
 _BACKFILL_NAME = "langgraph_checkpoint_transcript_v1"
-_POOL: AsyncConnectionPool | None = None
-_TABLE_SQL = """
-CREATE TABLE IF NOT EXISTS agent_chat_messages (
-    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    thread_id TEXT NOT NULL,
-    role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
-    text TEXT NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp()
-);
-"""
-_INDEX_SQL = "CREATE INDEX IF NOT EXISTS agent_chat_messages_thread_id_id_idx ON agent_chat_messages (thread_id, id DESC)"
-_MIGRATIONS_SQL = """
-CREATE TABLE IF NOT EXISTS agent_chat_migrations (
-    migration_key TEXT PRIMARY KEY,
-    completed_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp()
-);
-"""
-_MIGRATED_THREADS_SQL = """
-CREATE TABLE IF NOT EXISTS agent_chat_migrated_threads (
-    thread_id TEXT PRIMARY KEY,
-    migrated_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp()
-);
-"""
 
 
-async def init_message_store() -> None:
-    """Open the async pool and create the transcript table if needed."""
-    global _POOL
-    if _POOL is not None:
-        return
-    pool = AsyncConnectionPool(
-        conninfo=get_settings().database_url,
-        min_size=1,
-        max_size=5,
-        open=False,
-        kwargs={"row_factory": dict_row},
-    )
-    await pool.open()
-    try:
-        async with pool.connection() as conn:
-            await conn.execute(_TABLE_SQL)
-            await conn.execute(_INDEX_SQL)
-            await conn.execute(_MIGRATIONS_SQL)
-            await conn.execute(_MIGRATED_THREADS_SQL)
-            await conn.commit()
-    except BaseException:
-        await pool.close()
-        raise
-    _POOL = pool
-
-
-async def shutdown_message_store() -> None:
-    """Close the transcript pool during application shutdown."""
-    global _POOL
-    pool, _POOL = _POOL, None
-    if pool is not None:
-        await pool.close()
-
-
-def _pool() -> AsyncConnectionPool:
-    if _POOL is None:
-        raise RuntimeError("Message store not initialized — call init_message_store() first.")
-    return _POOL
-
-
-async def append_message(thread_id: str, role: str, text: str) -> dict:
+async def append_message(account_id: str, role: str, text: str) -> dict:
     """Append a user or assistant message and return its persisted fields."""
-    async with _pool().connection() as conn:
+    async with get_pool().connection() as conn:
         await conn.execute(
             "SELECT pg_advisory_xact_lock(hashtextextended(%s, %s))",
-            (thread_id, _BACKFILL_KEY),
+            (account_id, _BACKFILL_KEY),
         )
         cursor = await conn.execute(
-            """INSERT INTO agent_chat_messages (thread_id, role, text)
+            """INSERT INTO agent_chat_messages (account_id, role, text)
                VALUES (%s, %s, %s)
                RETURNING id, role, text, created_at""",
-            (thread_id, role, text),
+            (account_id, role, text),
         )
         row = await cursor.fetchone()
         await conn.commit()
@@ -193,7 +127,7 @@ async def backfill_checkpoint_transcripts(checkpointer: Any) -> int:
     Checkpoint timestamps provide the closest available timestamp for legacy
     messages; LangGraph did not store a timestamp on each message.
     """
-    pool = _pool()
+    pool = get_pool()
     migrated_count = 0
     async with pool.connection() as conn:
         await conn.execute("SELECT pg_advisory_lock(%s)", (_BACKFILL_KEY,))
@@ -214,20 +148,33 @@ async def backfill_checkpoint_transcripts(checkpointer: Any) -> int:
                 thread_ids = [row["thread_id"] for row in await cursor.fetchall()]
 
             for thread_id in thread_ids:
+                cursor = await conn.execute(
+                    """
+                    SELECT account_id::text AS account_id FROM users
+                    WHERE legacy_subject = %s OR account_id::text = %s
+                    ORDER BY (legacy_subject = %s) DESC NULLS LAST LIMIT 1
+                    """,
+                    (thread_id, thread_id, thread_id),
+                )
+                account = await cursor.fetchone()
+                if account is None:
+                    await conn.commit()
+                    continue
+                account_id = account["account_id"]
                 await conn.execute(
                     "SELECT pg_advisory_xact_lock(hashtextextended(%s, %s))",
-                    (thread_id, _BACKFILL_KEY),
+                    (account_id, _BACKFILL_KEY),
                 )
                 cursor = await conn.execute(
-                    "SELECT 1 FROM agent_chat_migrated_threads WHERE thread_id = %s",
-                    (thread_id,),
+                    "SELECT 1 FROM agent_chat_migrated_users WHERE account_id = %s",
+                    (account_id,),
                 )
                 if await cursor.fetchone():
                     await conn.commit()
                     continue
                 cursor = await conn.execute(
-                    "SELECT EXISTS (SELECT 1 FROM agent_chat_messages WHERE thread_id = %s) AS present",
-                    (thread_id,),
+                    "SELECT EXISTS (SELECT 1 FROM agent_chat_messages WHERE account_id = %s) AS present",
+                    (account_id,),
                 )
                 if not (await cursor.fetchone())["present"]:
                     config = {"configurable": {"thread_id": thread_id, "checkpoint_ns": ""}}
@@ -236,17 +183,17 @@ async def backfill_checkpoint_transcripts(checkpointer: Any) -> int:
                     if rows:
                         async with conn.cursor() as insert_cursor:
                             await insert_cursor.executemany(
-                                """INSERT INTO agent_chat_messages (thread_id, role, text, created_at)
+                                """INSERT INTO agent_chat_messages (account_id, role, text, created_at)
                                    VALUES (%s, %s, %s, %s)""",
                                 [
-                                    (thread_id, role, text, timestamp)
+                                    (account_id, role, text, timestamp)
                                     for role, text, timestamp in rows
                                 ],
                             )
                         migrated_count += len(rows)
                 await conn.execute(
-                    "INSERT INTO agent_chat_migrated_threads (thread_id) VALUES (%s) ON CONFLICT DO NOTHING",
-                    (thread_id,),
+                    "INSERT INTO agent_chat_migrated_users (account_id) VALUES (%s) ON CONFLICT DO NOTHING",
+                    (account_id,),
                 )
                 await conn.commit()
 
@@ -265,35 +212,35 @@ async def backfill_checkpoint_transcripts(checkpointer: Any) -> int:
     return migrated_count
 
 
-async def list_messages(thread_id: str, before_id: int | None = None) -> tuple[list[dict], bool]:
+async def list_messages(account_id: str, before_id: int | None = None) -> tuple[list[dict], bool]:
     """Load the newest page, or the page immediately older than ``before_id``."""
-    async with _pool().connection() as conn:
+    async with get_pool().connection() as conn:
         if before_id is None:
             cursor = await conn.execute(
                 """SELECT id, role, text, created_at FROM agent_chat_messages
-                   WHERE thread_id = %s ORDER BY id DESC LIMIT %s""",
-                (thread_id, PAGE_SIZE + 1),
+                   WHERE account_id = %s ORDER BY id DESC LIMIT %s""",
+                (account_id, PAGE_SIZE + 1),
             )
         else:
             cursor = await conn.execute(
                 """SELECT id, role, text, created_at FROM agent_chat_messages
-                   WHERE thread_id = %s AND id < %s ORDER BY id DESC LIMIT %s""",
-                (thread_id, before_id, PAGE_SIZE + 1),
+                   WHERE account_id = %s AND id < %s ORDER BY id DESC LIMIT %s""",
+                (account_id, before_id, PAGE_SIZE + 1),
             )
         rows = await cursor.fetchall()
     has_more = len(rows) > PAGE_SIZE
     return list(reversed(rows[:PAGE_SIZE])), has_more
 
 
-async def delete_thread_messages(thread_id: str) -> int:
-    """Delete transcript rows for one thread without touching its layout."""
-    async with _pool().connection() as conn:
+async def delete_user_messages(account_id: str) -> int:
+    """Delete transcript rows for one user without touching its layout."""
+    async with get_pool().connection() as conn:
         await conn.execute(
             "SELECT pg_advisory_xact_lock(hashtextextended(%s, %s))",
-            (thread_id, _BACKFILL_KEY),
+            (account_id, _BACKFILL_KEY),
         )
         cursor = await conn.execute(
-            "DELETE FROM agent_chat_messages WHERE thread_id = %s", (thread_id,)
+            "DELETE FROM agent_chat_messages WHERE account_id = %s", (account_id,)
         )
         await conn.commit()
     return cursor.rowcount or 0
@@ -301,7 +248,7 @@ async def delete_thread_messages(thread_id: str) -> int:
 
 async def truncate_messages() -> int:
     """Delete all transcript rows (development reset)."""
-    async with _pool().connection() as conn:
+    async with get_pool().connection() as conn:
         cursor = await conn.execute("SELECT COUNT(*) AS n FROM agent_chat_messages")
         row = await cursor.fetchone()
         count = int(row["n"])

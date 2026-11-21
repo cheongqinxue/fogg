@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-import pytest
 from collections.abc import Iterator
 
+import pytest
+from utils.request_context import request_account_id
 from utils.settings import reset_settings_for_tests
 
 
@@ -14,6 +15,17 @@ def clear_cached_settings() -> Iterator[None]:
     reset_settings_for_tests()
     yield
     reset_settings_for_tests()
+
+
+@pytest.fixture
+def account_context() -> Iterator[str]:
+    """Supply an explicit account for tests that call tools without HTTP."""
+    account_id = "test-account"
+    token = request_account_id.set(account_id)
+    try:
+        yield account_id
+    finally:
+        request_account_id.reset(token)
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:

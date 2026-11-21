@@ -1,8 +1,5 @@
 """Assemble functionality module tools into the master agent toolbox."""
 
-from utils.settings import AppSettings, get_settings
-from utils.user_tool_config import get_saved_providers, get_tool_active_overrides
-from utils.tools import PrioritizedToolInput, capture_tool_io
 from gmaps.tools import (
     places_get,
     places_search_nearby,
@@ -13,6 +10,9 @@ from gmaps.tools import (
 from langchain_core.tools import tool
 from layout.tools import map_set_viewport
 from pydantic import Field
+from utils.settings import AppSettings, get_settings
+from utils.tools import PrioritizedToolInput, capture_tool_io
+from utils.user_tool_config import get_saved_providers, get_tool_active_overrides
 from web_search_tool.tools import web_extract, web_search
 
 TOOL_CREDENTIAL_PROVIDERS = {
@@ -72,12 +72,12 @@ def _environment_providers(settings: AppSettings) -> set[str]:
     } | ({"google_maps"} if settings.google_maps_api_key.strip() else set())
 
 
-async def get_user_tool_configuration(uid: str, *, settings: AppSettings | None = None):
+async def get_user_tool_configuration(account_id: str, *, settings: AppSettings | None = None):
     """Return per-user readiness and activation for every registered tool."""
     settings = settings or get_settings()
     tools = get_tools()
-    saved = await get_saved_providers(uid)
-    overrides = await get_tool_active_overrides(uid)
+    saved = await get_saved_providers(account_id)
+    overrides = await get_tool_active_overrides(account_id)
     environment = _environment_providers(settings)
     enabled_providers = set(settings.web_search_providers) | {"google_maps"}
     configured = (environment | saved) & enabled_providers
@@ -102,10 +102,14 @@ async def get_user_tool_configuration(uid: str, *, settings: AppSettings | None 
     return result
 
 
-async def get_active_tools(uid: str, *, tools=None):
-    """Return tools that the authenticated user has currently enabled."""
-    configurations = await get_user_tool_configuration(uid)
+async def get_active_tools(account_id: str | None, *, tools=None):
+    """Select tools for an account or restrict a standalone graph to unscoped tools."""
+    source = get_tools() if tools is None else tools
+    if account_id is None:
+        account_tools = {*TOOL_CREDENTIAL_PROVIDERS, map_set_viewport.name}
+        return [tool for tool in source if tool.name not in account_tools]
+
+    configurations = await get_user_tool_configuration(account_id)
     known_names = {item["name"] for item in configurations}
     active_names = {item["name"] for item in configurations if item["active"]}
-    source = get_tools() if tools is None else tools
     return [tool for tool in source if tool.name not in known_names or tool.name in active_names]

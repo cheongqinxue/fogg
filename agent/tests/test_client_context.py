@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from layout.client_context import ClientContextPayload, format_client_context_digest
 
 
@@ -11,7 +10,7 @@ class TestClientContextDigest:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_digest_includes_sync_and_viewport(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        async def _no_head(_thread_id: str):
+        async def _no_head(_user_id: str):
             return None
 
         monkeypatch.setattr(

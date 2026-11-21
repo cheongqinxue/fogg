@@ -2,22 +2,21 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
-
-from utils.checkpointing import get_checkpointer
-from utils.settings import get_settings
 from layout.store import (
-    _require_pool,
-    delete_thread_layout,
-    truncate_all_thread_layouts,
+    delete_user_layout,
+    truncate_all_user_layouts,
 )
-from api.messages.store import delete_thread_messages, truncate_messages
+from pydantic import BaseModel, Field
+from utils.checkpointing import checkpoint_thread_id, clear_all_checkpoint_threads, get_checkpointer
+from utils.settings import get_settings
+
+from api.messages.store import delete_user_messages, truncate_messages
 
 
 class DevResetRequest(BaseModel):
     """Reset scope for local testing."""
 
-    user_id: str | None = Field(
+    account_id: str | None = Field(
         default=None,
         description="Clear this user only. Omit or null to reset **all** users (nuclear).",
     )
@@ -40,29 +39,25 @@ def dev_reset_enabled() -> bool:
 async def reset_agent_state(body: DevResetRequest) -> DevResetResponse:
     """Delete layout and checkpoint data for one user or for every user."""
     checkpointer = get_checkpointer()
-    if body.user_id is not None:
-        user_id = body.user_id.strip()
-        if not user_id:
-            msg = "user_id must be non-empty when provided"
+    if body.account_id is not None:
+        account_id = body.account_id.strip()
+        if not account_id:
+            msg = "account_id must be non-empty when provided"
             raise ValueError(msg)
-        layout_removed = await delete_thread_layout(user_id)
-        transcript_removed = await delete_thread_messages(user_id)
-        await checkpointer.adelete_thread(user_id)
+        layout_removed = await delete_user_layout(account_id)
+        transcript_removed = await delete_user_messages(account_id)
+        thread_id = await checkpoint_thread_id(account_id)
+        await checkpointer.adelete_thread(thread_id)
         return DevResetResponse(
-            scope=f"user:{user_id}",
+            scope=f"account:{account_id}",
             layout_rows_removed=layout_removed,
             transcript_messages_removed=transcript_removed,
-            checkpoint_threads_cleared=user_id,
+            checkpoint_threads_cleared=thread_id,
         )
 
-    layout_removed = await truncate_all_thread_layouts()
+    layout_removed = await truncate_all_user_layouts()
     transcript_removed = await truncate_messages()
-    pool = _require_pool()
-    async with pool.connection() as conn:
-        await conn.execute(
-            "TRUNCATE TABLE checkpoint_writes, checkpoint_blobs, checkpoints",
-        )
-        await conn.commit()
+    await clear_all_checkpoint_threads()
     return DevResetResponse(
         scope="all",
         layout_rows_removed=layout_removed,

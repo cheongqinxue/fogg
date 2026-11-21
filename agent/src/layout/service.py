@@ -7,13 +7,13 @@ import logging
 from pydantic import ValidationError
 
 from layout.models import LayoutDocument, LayoutSyncRequest, LayoutSyncResponse
-from layout.store import ThreadLayoutRow, get_or_create_thread_layout, upsert_thread_layout
+from layout.store import UserLayoutRow, get_or_create_user_layout, upsert_user_layout
 
 logger = logging.getLogger(__name__)
 
 
 def _response_from_row(
-    row: ThreadLayoutRow, *, accepted: bool, reject_reason: str | None
+    row: UserLayoutRow, *, accepted: bool, reject_reason: str | None
 ) -> LayoutSyncResponse:
     return LayoutSyncResponse(
         accepted=accepted,
@@ -64,9 +64,9 @@ def _validate_layout(raw: dict) -> dict:
         raise ValueError(msg) from exc
 
 
-async def sync_layout(thread_id: str, request: LayoutSyncRequest) -> LayoutSyncResponse:
+async def sync_layout(account_id: str, request: LayoutSyncRequest) -> LayoutSyncResponse:
     """Apply a client sync request and return the authoritative layout head."""
-    row = await get_or_create_thread_layout(thread_id)
+    row = await get_or_create_user_layout(account_id)
 
     if request.client_revision != row.revision:
         return _response_from_row(
@@ -92,7 +92,7 @@ async def sync_layout(thread_id: str, request: LayoutSyncRequest) -> LayoutSyncR
                 )
             layout = _validate_layout(request.layout)
             new_revision = row.revision + 1
-            row = await upsert_thread_layout(thread_id, new_revision, layout)
+            row = await upsert_user_layout(account_id, new_revision, layout)
             return _response_from_row(row, accepted=True, reject_reason=None)
 
         if request.proposed_delta is not None:
@@ -106,13 +106,13 @@ async def sync_layout(thread_id: str, request: LayoutSyncRequest) -> LayoutSyncR
             layout = _apply_viewport_delta(row.layout, delta.payload)
             layout = _validate_layout(layout)
             new_revision = row.revision + 1
-            row = await upsert_thread_layout(thread_id, new_revision, layout)
+            row = await upsert_user_layout(account_id, new_revision, layout)
             return _response_from_row(row, accepted=True, reject_reason=None)
 
         if request.applied is not None:
             # Monotonic revision even when layout JSON is unchanged (client command ack).
             new_revision = row.revision + 1
-            row = await upsert_thread_layout(thread_id, new_revision, row.layout)
+            row = await upsert_user_layout(account_id, new_revision, row.layout)
             return _response_from_row(row, accepted=True, reject_reason=None)
 
         return _response_from_row(
@@ -121,5 +121,5 @@ async def sync_layout(thread_id: str, request: LayoutSyncRequest) -> LayoutSyncR
             reject_reason="empty_sync_body",
         )
     except ValueError as exc:
-        logger.info("Layout sync rejected for thread %s: %s", thread_id, exc)
+        logger.info("Layout sync rejected for user %s: %s", account_id, exc)
         return _response_from_row(row, accepted=False, reject_reason=str(exc))
