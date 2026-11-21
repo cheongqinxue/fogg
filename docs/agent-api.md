@@ -11,7 +11,39 @@ The Svelte browser client uses `AGENT_API_BASE_URL` (scheme + host + port **with
 
 ### Identity
 
-All `/v1/users/{user_id}/…` routes and `/v1/tools/…` configuration routes resolve the caller through `Authorization: Bearer <ID token>`. The API verifies the token with `verify_identity_token()` and uses the verified UID for checkpoints, layout, transcript history, and tool configuration. The path `user_id` must match that UID; it is not accepted as proof of identity. In local identity mode, the verifier returns the fixed UID `fogg-local-user` and permits requests without a bearer token. Google identity mode requires a valid Identity Platform ID token.
+User-scoped routes resolve the caller's internal `account_id` from the bearer token.
+The path value must match the authenticated account. Layout, chat transcripts, tool
+settings, and credentials use that account ID.
+
+In dev and test, `IDENTITY_BACKEND=password` enables the browser onboarding flow.
+It issues opaque FOGG session tokens with a 12-hour lifetime. The browser sends
+`Authorization: Bearer <access_token>`. `IDENTITY_BACKEND=local` remains an explicit
+development stub for callers that use the fixed development account without login.
+
+Google login is disabled in the browser. With `IDENTITY_BACKEND=google`, the
+token exchange verifies Google sign-in through the configured Identity Platform
+project. It maps the verified issuer and subject to a FOGG account and issues
+the same FOGG session token used for password sign-in. The app API checks FOGG
+sessions in Postgres, so a provider ID token cannot authenticate an app request.
+
+### Password sign-in and onboarding
+
+| Method | Path | Request and response |
+|--------|------|----------------------|
+| POST | `/v1/auth/register` | Creates the profile and returns a session with HTTP 201. |
+| POST | `/v1/auth/login` | Accepts `email` and `password`. Returns a session with HTTP 200. |
+| POST | `/v1/auth/google` | Accepts `{"id_token":"<Identity Platform ID token>"}` in Google mode and returns a FOGG session. |
+| GET | `/v1/auth/session` | Returns `{"account_id":"<uuid>"}` for a valid session. |
+| DELETE | `/v1/auth/session` | Revokes the supplied bearer session and returns HTTP 204. |
+
+Registration takes `email`, `password` (15–256 characters), `name`,
+`home_formatted_address`, and `home_country_code` (ISO two-letter code).
+`gender` and `immigration_statuses` are optional. Each immigration entry has
+`country_code` and `kind` (`citizenship` or `permanent_resident`).
+
+Registration, password login, and Google exchange return `account_id`,
+`access_token`, and `expires_at`.
+Passwords are salted and hashed and the server stores session token hashes.
 
 ### Implementation tracker
 
@@ -21,17 +53,17 @@ Each row is one deliverable. Check **Agent** when the FastAPI / LangGraph side l
 |------|:-----:|:---:|
 | `GET /v1/health` | [x] | [ ] |
 | `GET /v1/tools/status` (tool configuration readiness) | [x] | [x] |
-| LangGraph **checkpoint** (path `user_id` → `configurable.thread_id`; Postgres) | [x] | [ ] |
-| `POST /v1/users/{user_id}/chat/stream` — `assistant_delta`, `assistant_done` (basic) | [x] | [x] |
-| `POST /v1/users/{user_id}/chat/stream` — `tool_call_start` / `tool_call_end` | [x] | [x] |
+| LangGraph **checkpoint** (path `account_id` → `configurable.thread_id`; Postgres) | [x] | [ ] |
+| `POST /v1/users/{account_id}/chat/stream` — `assistant_delta`, `assistant_done` (basic) | [x] | [x] |
+| `POST /v1/users/{account_id}/chat/stream` — `tool_call_start` / `tool_call_end` | [x] | [x] |
 | Web: true SSE streaming (`fetch` + `ReadableStream`, not buffered) | — | [x] |
 | Layout document schema v1 (local cache + thread state) | [x] | [x] |
 | `revision` + `layout_hash` generation and compare | [x] | [x] |
-| `POST /v1/users/{user_id}/layout/sync` | [x] | [x] |
-| `GET /v1/users/{user_id}/layout` (revision / hash only) | [x] | [x] |
-| `GET /v1/users/{user_id}/messages` (UI chat restore) | [x] | [x] |
-| `DELETE /v1/users/{user_id}/messages` (clear transcript + checkpoints; keep layout) | [x] | [x] |
-| `client_context` on `POST /v1/users/{user_id}/chat` (+ stream) | [x] | [x] |
+| `POST /v1/users/{account_id}/layout/sync` | [x] | [x] |
+| `GET /v1/users/{account_id}/layout` (revision / hash only) | [x] | [x] |
+| `GET /v1/users/{account_id}/messages` (UI chat restore) | [x] | [x] |
+| `DELETE /v1/users/{account_id}/messages` (clear transcript + checkpoints; keep layout) | [x] | [x] |
+| `client_context` on `POST /v1/users/{account_id}/chat` (+ stream) | [x] | [x] |
 | LLM layout digest from `client_context` + server layout | [x] | — |
 | SSE `client_command` (emit) | [x] | [x] |
 | Command `map.set_viewport` (apply + validate) | [x] | [x] |
@@ -46,7 +78,7 @@ Each row is one deliverable. Check **Agent** when the FastAPI / LangGraph side l
 
 ## Client boundary
 
-The **browser client must not** call backend services directly (Google Maps, trip store, Postgres, etc.). All product I/O goes **client → agent → backend**. The client keeps a **local layout cache** for instant UI and offline use; the **authoritative layout** for a `user_id` lives on the **agent** (layout store + checkpointer), updated via **`layout/sync`**.
+The **browser client must not** call backend services directly (Google Maps, trip store, Postgres, etc.). All product I/O goes **client → agent → backend**. The client keeps a **local layout cache** for instant UI and offline use; the **authoritative layout** for a `account_id` lives on the **agent** (layout store + checkpointer), updated via **`layout/sync`**.
 
 **Map camera:** User gestures **move the client map immediately** and **report** what they did. The **agent** (LLM + tools) decides whether to **command** a new viewport on later turns. **Only** a successful **`map_set_viewport` tool** may emit **`client_command`** (`map.set_viewport`). Do not infer map moves from `tool_call_end` text or silent merge rules alone.
 
@@ -58,18 +90,18 @@ The **browser client must not** call backend services directly (Google Maps, tri
 | `GET` | `/v1/tools/status` | Registered tools and required API-key configuration |
 | `PUT` | `/v1/tools/{tool_name}/active` | Enable or disable a tool for the authenticated user |
 | `PUT` | `/v1/tools/credentials` | Save or replace encrypted provider API keys for the authenticated user |
-| `POST` | `/v1/users/{user_id}/chat` | One full agent turn (blocking) |
-| `POST` | `/v1/users/{user_id}/chat/stream` | Same turn, **Server-Sent Events** |
-| `POST` | `/v1/users/{user_id}/layout/sync` | Layout reconcile (user/agent deltas or full config) — [ ] Agent · [x] UI |
-| `GET` | `/v1/users/{user_id}/layout` | Optional lightweight revision / hash check — [ ] Agent · [x] UI |
-| `GET` | `/v1/users/{user_id}/messages` | User/assistant transcript for UI restore — [x] Agent · [x] UI |
-| `DELETE` | `/v1/users/{user_id}/messages` | Clear transcript and LangGraph thread history; preserve layout |
+| `POST` | `/v1/users/{account_id}/chat` | One full agent turn (blocking) |
+| `POST` | `/v1/users/{account_id}/chat/stream` | Same turn, **Server-Sent Events** |
+| `POST` | `/v1/users/{account_id}/layout/sync` | Layout reconcile (user/agent deltas or full config) — [ ] Agent · [x] UI |
+| `GET` | `/v1/users/{account_id}/layout` | Optional lightweight revision / hash check — [ ] Agent · [x] UI |
+| `GET` | `/v1/users/{account_id}/messages` | User/assistant transcript for UI restore — [x] Agent · [x] UI |
+| `DELETE` | `/v1/users/{account_id}/messages` | Clear transcript and LangGraph thread history; preserve layout |
 
 ### Tool readiness
 
 `GET /v1/tools/status` requires the normal bearer authentication and returns `api_server: "ready"` and one row for every registered agent tool. Each row includes its name, description, `active` state, `status`, setup message, and provider credential fields with configured flags. `status` is `"ready"` when required configuration is present, or `"needs_configuration"`. Readiness and activation are separate: users cannot enable a tool until it is ready. Local tools default active; key-backed tools default inactive unless a server environment key already configures them. A saved user key makes the tool ready but leaves it inactive until enabled.
 
-Google Maps tools share one `google_maps` key. Both web tools share the configured Tavily, Exa, and Firecrawl provider keys. Credentials are scoped to the verified UID, encrypted with the shared KMS helper before Postgres storage, and decrypted only at tool invocation. Saving a provider key again replaces the previous key. Keys are never returned by the API.
+Google Maps tools share one `google_maps` key. Both web tools share the configured Tavily, Exa, and Firecrawl provider keys. Credentials are scoped to the authenticated account, encrypted with the shared KMS helper before Postgres storage, and decrypted only at tool invocation. Saving a provider key again replaces the previous key. Keys are never returned by the API.
 
 Save or replace one or more provider keys with `PUT /v1/tools/credentials`:
 
@@ -92,11 +124,13 @@ If the API server cannot be reached, the status endpoint cannot return a respons
 
 **Track:** [x] Agent chat history · [x] layout store
 
-Each `POST /v1/users/{user_id}/chat` or `/v1/users/{user_id}/chat/stream` turn uses the **verified UID** as the LangGraph config key (`configurable.thread_id`). The path value must match the verified UID. The compiled ReAct graph uses **`AsyncPostgresSaver`** so message state is **loaded and extended** per thread instead of starting empty every request.
+FOGG owns the internal `account_id`. New account chats use it as the value of
+LangGraph's `configurable.thread_id`. Earlier conversations retain their existing
+checkpoint identifiers so their saved history can still be loaded.
 
 Set **`AGENT_DATABASE_URL`** or **`DATABASE_URL`** (same Postgres as the backend stub in compose). Checkpoint tables are created on startup via `checkpointer.setup()`. FastAPI **`lifespan`** in `api.app` calls `init_checkpointer()` before the graph singleton is built — run the agent via **`uvicorn api.app:app`**, not a bare graph import, so Postgres is wired.
 
-`DELETE /v1/users/{user_id}/messages` removes that user's transcript rows and LangGraph checkpoint thread. It preserves the independent layout row, including the last saved viewport.
+`DELETE /v1/users/{account_id}/messages` removes that user's transcript rows and LangGraph checkpoint thread. It preserves the independent layout row, including the last saved viewport.
 
 ---
 
@@ -104,7 +138,7 @@ Set **`AGENT_DATABASE_URL`** or **`DATABASE_URL`** (same Postgres as the backend
 
 **Track:** [ ] Agent · [x] UI — layout document, `revision`, `layout_hash`
 
-Both sides hold a **layout document** per `user_id` (URL path; stored under the same key in Postgres). The client copy is a **cache** (offline queue, optimistic UI). The server copy is **durable state** (revision/hash/document) used by tools, `client_context`, and digests.
+Both sides hold a **layout document** per `account_id` (URL path; stored under the same key in Postgres). The client copy is a **cache** (offline queue, optimistic UI). The server copy is **durable state** (revision/hash/document) used by tools, `client_context`, and digests.
 
 The layout row is independent of chat history. Clearing a conversation does not reset its saved map viewport.
 
@@ -139,7 +173,7 @@ The layout row is independent of chat history. Clearing a conversation does not 
 
 | Field | Owner | Purpose |
 |-------|--------|---------|
-| `revision` | Server | Monotonic integer per `user_id`; increments on every accepted sync |
+| `revision` | Server | Monotonic integer per `account_id`; increments on every accepted sync |
 | `layout_hash` | Server | SHA-256 of **canonical** JSON (stable key order); integrity / “am I stale?” |
 
 Clients store `revision` + `layout_hash` with the cached document. On desync, the **client detects** mismatch and calls **`layout/sync`**; the **server responds** with authoritative `revision`, `layout_hash`, and full `layout` when needed.
@@ -159,7 +193,7 @@ Clients store `revision` + `layout_hash` with the cached document. On desync, th
 
 ---
 
-## `DELETE /v1/users/{user_id}/messages`
+## `DELETE /v1/users/{account_id}/messages`
 
 Clears the authenticated user's transcript and LangGraph checkpoint thread while preserving
 the layout document and saved viewport. The operation is idempotent. The UI should ask the
@@ -175,11 +209,11 @@ user to confirm before calling it.
 
 ---
 
-## `POST /v1/users/{user_id}/chat` and `POST /v1/users/{user_id}/chat/stream` — request
+## `POST /v1/users/{account_id}/chat` and `POST /v1/users/{account_id}/chat/stream` — request
 
 **Track:** [x] Agent · [x] UI — accept and send `client_context`
 
-The conversation partition key is the path segment **`user_id`** (not a JSON field). Future auth may derive it from a token instead of the client-supplied path.
+The conversation partition key is the path segment **`account_id`** (not a JSON field). Future auth may derive it from a token instead of the client-supplied path.
 
 ```json
 {
@@ -220,7 +254,7 @@ The agent injects a **short digest** from `client_context` + server layout (e.g.
 
 ---
 
-## `POST /v1/users/{user_id}/layout/sync`
+## `POST /v1/users/{account_id}/layout/sync`
 
 **Track:** [x] Agent · [x] UI — endpoint client, throttled user deltas (animated realign [ ] UI)
 
@@ -313,7 +347,7 @@ When sync fails, `accepted: false`, or client cannot trust partial state:
 
 Client queues `proposed_delta` / `applied` in `pending_deltas`. On reconnect, flush queue then call `layout/sync` (batch or `sync_mode: full`). Chat may use `sync_status: offline` until reconcile succeeds.
 
-### Optional `GET /v1/users/{user_id}/layout`
+### Optional `GET /v1/users/{account_id}/layout`
 
 **Track:** [ ] Agent · [x] UI — hash-only poll and desync trigger
 
@@ -321,7 +355,7 @@ Query: `?revision=12`. Response: `{ "revision", "layout_hash" }` only. If hash d
 
 ---
 
-## `GET /v1/users/{user_id}/messages`
+## `GET /v1/users/{account_id}/messages`
 
 Returns the UI transcript from the independent Postgres conversation-history table. This store is separate from LangGraph checkpoint state: model/tool context can change without changing the persisted user-facing transcript. Only user and completed assistant messages are written; client-context digests and tool messages are excluded.
 
@@ -367,7 +401,7 @@ The table and index are created automatically by the API lifespan at startup (`a
 
 ---
 
-## `POST /v1/users/{user_id}/chat` response
+## `POST /v1/users/{account_id}/chat` response
 
 ```json
 {
@@ -377,11 +411,11 @@ The table and index are created automatically by the API lifespan at startup (`a
 }
 ```
 
-Messages are JSON objects with `type` (`human` \| `ai` \| `tool`, …) and `data` (including `content`, `tool_calls` when present). Use this shape for debugging. For transcript restore in the product UI, prefer **`GET …/messages`**; for live turns, prefer **`/v1/users/{user_id}/chat/stream`**.
+Messages are JSON objects with `type` (`human` \| `ai` \| `tool`, …) and `data` (including `content`, `tool_calls` when present). Use this shape for debugging. For transcript restore in the product UI, prefer **`GET …/messages`**; for live turns, prefer **`/v1/users/{account_id}/chat/stream`**.
 
 ---
 
-## `POST /v1/users/{user_id}/chat/stream` — SSE
+## `POST /v1/users/{account_id}/chat/stream` — SSE
 
 - **Response:** `Content-Type: text/event-stream`
 - **Frame:** each event is one line `data: <json>` followed by a blank line.
@@ -577,7 +611,7 @@ The Svelte client parses stream events in [`frontend/svelte/src/lib/agent.ts`](.
 
 **User sends chat**
 
-1. Client reads local cache → `client_context` on `POST /v1/users/{user_id}/chat/stream`.
+1. Client reads local cache → `client_context` on `POST /v1/users/{account_id}/chat/stream`.
 2. Model sees chat history and the current viewport digest; it may call **`map_set_viewport`**.
 3. SSE: **`client_command`** only if that tool ran → client apply → `layout/sync` (`applied`).
 4. `assistant_done` optional `layout_revision` / `layout_hash` → resync if mismatched.

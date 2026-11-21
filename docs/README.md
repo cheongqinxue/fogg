@@ -4,7 +4,7 @@ Documentation for FOGG.
 
 ## Product & planning
 
-- [`domain/`](domain/) — **domain model**, **DBML** ([`schema.dbml`](domain/schema.dbml)), [**geospatial**](domain/geospatial.md) (PostGIS)
+- [`domain/`](domain/) — **domain model** and [**geospatial**](domain/geospatial.md) (PostGIS)
 - [`user-journeys.md`](user-journeys.md) — storyboard, user journeys, phased roadmap (living substitute for a ticket board)
 - [`dialogue-interface.md`](dialogue-interface.md) — dialogue-first UI: panels, frames, agent protocol, architecture implications
 - [`frame-journey-map.md`](frame-journey-map.md) — which frames serve which journey steps; gaps and redundancies

@@ -188,7 +188,7 @@ The agent **orchestrates** which frames are visible; the user can **pin** a fram
 | Concern | Approach |
 |---------|----------|
 | **API shape** | Trip-scoped **session API**: send message, SSE/WebSocket for stream, fetch thread pages, fetch/apply workspace revision. |
-| **Persistence** | **Messages** + threads ([schema](domain/schema.dbml): `conversation_messages`, `message_entity_links`), workspace snapshots, fork metadata, search index (message text + frame titles). |
+| **Persistence** | **Messages** + threads ([domain model](domain/domain-model.md#conversation)), workspace snapshots, fork metadata, search index (message text + frame titles). |
 | **Agent harness** | `agent/` runs tool loop; tools return **structured results** → mapped to frame ops + chat citations. |
 | **Tools vs frames** | Tools = backend capabilities (gmaps, weather, email parse). Frames = user-visible projection of tool results. |
 | **Tasks** | Long jobs (email ingest, route matrix) → `agent_tasks` frame + job id; chat gets short summary when done. |

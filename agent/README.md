@@ -57,6 +57,31 @@ Full request/response reference: [`docs/agent-api.md`](../docs/agent-api.md).
 
 **CORS:** `CORS_ORIGINS` (comma-separated) or `*` (default). Tighten in staging/production.
 
+## Postgres schema
+
+Compose creates the Postgres database. FOGG builds its tables inside the database
+configured by `AGENT_DATABASE_URL` or `DATABASE_URL`.
+[`src/backend/migrations/0001_baseline.sql`](src/backend/migrations/0001_baseline.sql)
+defines the pre-release schema. Edit that baseline while building the first
+runnable release. After release, freeze the baseline and add numbered migrations
+for schema changes. The migration runner checks the checksum recorded in each
+database.
+
+Dev and test API startup apply pending migrations. For production, run this once
+with a database role that can make schema changes before starting the API:
+
+```bash
+uv run python -m backend.migrate
+```
+
+Production startup requires FOGG migrations to be current. The LangGraph
+checkpointer still initializes its own separately managed tables. The FOGG
+pool is shared by profile, transcript, layout, and tool configuration queries.
+
+To exercise baseline bootstrap against local Postgres, set
+`FOGG_TEST_POSTGRES_URL` and run `uv run pytest agent/tests/test_database.py`.
+The tests create and remove isolated schemas.
+
 ## Run (LangGraph CLI — optional, Studio)
 
 ```bash
@@ -65,6 +90,10 @@ uv run langgraph dev
 ```
 
 `langgraph.json` loads `agent/.env` if present. API defaults to `http://127.0.0.1:2024` when the CLI starts.
+
+Studio and direct graph calls have no authenticated account context by default.
+They can run account-independent tools such as `echo_destination`. Use the
+FastAPI chat endpoints to run tools with a signed-in account's credentials and layout.
 
 ## Invoke in Python
 

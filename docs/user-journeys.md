@@ -4,7 +4,7 @@ Living product plan (Jira-free). Describes **who** FOGG serves, **what** they do
 
 **Primary objective:** a personalized travel butler that helps you **plan well under time pressure**, **keep everything in one place**, and **stay ahead of disruptions**—so you can travel with confidence, not constant mental replanning.
 
-**Interface:** every journey below is driven **in dialogue with the agent**. The shell is **chat history (left)** + **workspace frames (right)**—maps, calendars, reminders, file deposit, agent task progress, etc. See **[dialogue-interface.md](dialogue-interface.md)** for panels, frames, and backend/frontend implications.
+**Interface:** the first visit opens a sign-in form with an option to create an account. The ongoing experience is driven **in dialogue with the agent**. The shell is **chat history (left)** + **workspace frames (right)**—maps, calendars, reminders, file deposit, agent task progress, etc. See **[dialogue-interface.md](dialogue-interface.md)** for panels, frames, and backend/frontend implications.
 
 **Related:** [`../README.md`](../README.md) (vision), [`../AGENTS.md`](../AGENTS.md) (repo layout).
 
@@ -23,10 +23,12 @@ Full macro model: **[domain/domain-model.md](domain/domain-model.md)**. Short in
 | Object | Meaning |
 |--------|---------|
 | **User** | Person who owns **places**, **events**, and **trips**; **bio details**, **preferences**, **conversation**, **secrets**. |
-| **Bio details** | Profile facts: **gender**, **home address**, … |
+| **Bio details** | Name, home address, home country, and optional gender. |
 | **Immigration status** | Per country: **citizenship**, **PR**, or **visa** (list, not one field). |
 | **Secrets** | User-supplied credentials; **stored on device** first (encrypted), server vault only if product evolves. |
 | **Preferences** | Agent-inferred taste; **supersession** forward-only; embed + geo; **activities** compared at recommend time. |
+| **Preference summary** | Live summary of the user's known preferences. Starts empty. |
+| **Trip summary** | Live summary of the user's trips. Starts empty. |
 | **Message** | One turn in a **thread**; **entity links** to trip, place, activity, … |
 | **Trip** | Base vacation plan: **duration** + **itinerary** (+ status, budget); owned by a **user**. |
 | **Itinerary** | **Home-linked** plan of **activities** + **routes** (only when the loop home → trip → home exists). |
@@ -63,6 +65,7 @@ Compare plans via **`diagram`** / `itinerary_diff`. Disruption (J7) materializes
 
 ```mermaid
 flowchart LR
+  O[First login and basic details] --> A
   A[Plan & draft] --> B[Store & edit]
   B --> C[Book & confirm]
   C --> D[Ingest documents]
@@ -324,6 +327,20 @@ Execution covers the period from pre-departure preparations through the trip. Re
 
 ---
 
+## Journey 0 — “Get to know me” (onboarding)
+
+**Trigger:** Alex opens FOGG without a session. The sign-in screen offers email and password and a create-account option. The Google option is shown as unavailable.
+
+| Step | Alex does | FOGG does | Success |
+|------|-----------|-----------|---------|
+| 0.1 | Creates an account with email, password, name, home address, and home country. Gender and citizenship or permanent residency entries are optional. | Saves the profile and any immigration entries, then signs Alex in. | Alex can start chatting with gender unset. Details persist across sessions. |
+| 0.2 | Starts discussing a trip. | Gives the master agent YAML context with name, home country, immigration statuses, preference summary, and trip summary. | The agent has the saved profile and initially sees two empty summaries. |
+| 0.3 | Shares a preference or supplies or corrects a profile fact in chat. | Occasionally asks a relevant preference question while the preference summary is empty. Asks about missing profile or immigration details when useful, and saves facts Alex supplies or corrects. | Alex can keep planning while FOGG learns. Subsequent turns can use the saved facts. |
+
+**Scenario variants:** Leave gender blank, return after signing out, correct a profile fact in chat, or discuss entry requirements before any immigration statuses are recorded. See the [domain model](domain/domain-model.md#onboarding-and-profile-context) for the context fields.
+
+---
+
 ## Journey 1 — “I need a trip, fast” (plan & draft)
 
 **Trigger:** Alex has rough intent (“5 days in Kyoto, cherry season, mid budget”) and **no time** for deep research.
@@ -462,6 +479,7 @@ Use as checkboxes in git/markdown instead of Jira epics.
 ### Phase A — Plan & persist (MVP core)
 
 - [ ] Auth + user account
+- [ ] First-login bio form and conversational profile updates (J0)
 - [ ] CRUD **Trip** + **Itinerary** (draft/planned)
 - [ ] Map + timeline UI (Svelte); places/routes via backend `gmaps`
 - [ ] Retrieve & edit trips in mobile and desktop browsers

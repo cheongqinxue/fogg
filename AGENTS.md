@@ -13,7 +13,7 @@ FOGG is a travel-agent project.
 | Area | Path | Status |
 |------|------|--------|
 | **Functionality modules** | `agent/src/gmaps/`, `agent/src/layout/`, `agent/src/web_search_tool/` | Google Maps, layout, and multi-provider web search functionality used by the agent |
-| **Backend API stub** | `backend/server.py` | Minimal FastAPI health/readiness service for Docker Compose; not the production API |
+| **Database backend** | `agent/src/backend/` | Shared async Postgres pool, SQL migrations, and profile persistence |
 | **Frontend** | `frontend/svelte/` | SvelteKit browser app for phone and desktop web; chat/SSE, local layout sync, and OSM map — see [`frontend/svelte/README.md`](frontend/svelte/README.md) |
 | **Agent** | `agent/` | LangGraph ReAct harness — see [`agent/README.md`](agent/README.md) |
 
@@ -69,7 +69,7 @@ The app reads `AGENT_API_BASE_URL`, `AGENT_USER_ID`, and frontend port values fr
 | `agent/src/gmaps/` | `gmaps` | Google Maps client functionality module |
 | `agent/src/gmaps/requests/` | `gmaps.requests` | `GoogleMapRequest[T]` subclasses — `call()`, `check_quota()` |
 | `agent/src/gmaps/quota/` | `gmaps.quota` | Usage store (Redis/SQLite), free-tier caps |
-| `backend/server.py` | ASGI `app` | Compose health/readiness stub only; replace when implementing the real backend API |
+| `agent/src/backend/` | `backend` | Postgres migrations and async profile storage. Run `uv run python -m backend.migrate` to apply migrations explicitly. |
 
 **Call pattern:** construct a request (e.g. `PlacesTextSearchRequest(...)`), then `await req.call()`. Quota: `await req.check_quota()` → `QuotaBalance(used, balance)`.
 
@@ -84,6 +84,7 @@ The app reads `AGENT_API_BASE_URL`, `AGENT_USER_ID`, and frontend port values fr
 | `agent/tests/test_client_context.py`, `test_message_history.py` | Client context and checkpoint-backed transcript history |
 | `agent/tests/test_layout_hash.py`, `test_layout_sync.py`, `test_map_set_viewport.py` | Layout hashing/sync and map viewport tool behavior |
 | `agent/tests/test_dev_reset.py` | Development reset behavior |
+| `agent/tests/test_database.py` | Postgres baseline bootstrap and profile persistence |
 
 Run unit tests: `uv run pytest -m unit` (same as pre-commit). Integration: `uv run pytest -m integration`. Benchmarks: `uv run pytest benchmarks/ -m benchmark`.
 
@@ -99,8 +100,8 @@ Run unit tests: `uv run pytest -m unit` (same as pre-commit). Integration: `uv r
 | [`docs/agent-api.md`](docs/agent-api.md) | Agent HTTP **v1** — `/chat`, SSE stream events |
 | [`docs/gmaps-client.md`](docs/gmaps-client.md) | Integrators using `gmaps` |
 | [`docs/google-maps-pricing.md`](docs/google-maps-pricing.md) | Pricing matrix for Google Maps endpoints used by FOGG |
-| [`docs/domain/domain-model.md`](docs/domain/domain-model.md) | User / trip / itinerary / activity / place / route / versioning; **secrets** device-local first |
-| [`docs/domain/schema.dbml`](docs/domain/schema.dbml) | Postgres + PostGIS (**DBML**) |
+| [`docs/domain/domain-model.md`](docs/domain/domain-model.md) | User, trip, itinerary, geography, and conversation concepts |
+| [`agent/src/backend/migrations/`](agent/src/backend/migrations/) | Executable Postgres schema |
 | [`docs/domain/geospatial.md`](docs/domain/geospatial.md) | PostGIS geom, event impact queries |
 | [`docs/latency-optimization.md`](docs/latency-optimization.md) | Latency UX, baselines, system perf test matrix |
 
@@ -144,6 +145,9 @@ From **repo root**: `./scripts/compose-up.sh full --build` (or **`debug-agent`**
 
 
 ### Python package conventions
+
+- Use `account_id` for the FOGG account UUID throughout the application. External identity subjects stay in the identity layer. Use `thread_id` at the LangGraph checkpoint boundary or for an actual conversation thread.
+- Until the first runnable release, update `agent/src/backend/migrations/0001_baseline.sql` directly. Start adding versioned schema changes after release.
 
 - Name files by their role inside the owning package: use `gmaps/tools.py`, `layout/tools.py`, and `layout/sse.py`. The package path already identifies the module, so do not repeat the package name in filenames. Agent packages may use `tools.py` to assemble functionality-module tools and define agent-specific tools.
 - Keep each functionality tool's Pydantic input schema beside its function in that module's `tools.py`. Name schemas `<ToolFunctionPascalCase>Input`. Put shared tool base classes and serialization helpers in `utils/`.

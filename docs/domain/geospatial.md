@@ -2,7 +2,7 @@
 
 How FOGG stores **geometry**, runs **fast** containment and proximity queries, and ties **events** (e.g. city-wide strike) to **activities** at named POIs (e.g. World Trade Center) without a knowledge graph or full-table scans.
 
-**Related:** [domain-model.md](domain-model.md) (Place, Event, Activity), [schema.dbml](schema.dbml), [google-maps-alignment.md](../google-maps-alignment.md).
+**Related:** [domain-model.md](domain-model.md) (Place, Event, Activity), [google-maps-alignment.md](../google-maps-alignment.md).
 
 ---
 
@@ -34,7 +34,7 @@ Enable extension in migrations:
 CREATE EXTENSION IF NOT EXISTS postgis;
 ```
 
-DBML uses `text` placeholders for geography types; see comments on [schema.dbml](schema.dbml) columns.
+The geography columns described here are planned. See the [SQL migrations](../../agent/src/backend/migrations/) for the implemented schema.
 
 ---
 

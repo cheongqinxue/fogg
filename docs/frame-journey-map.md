@@ -10,6 +10,7 @@ Cross-reference between [user journeys](user-journeys.md) and [workspace frames]
 
 | ID | Journey |
 |----|---------|
+| J0 | First login & conversational onboarding |
 | J1 | Plan & draft |
 | J2 | Store, retrieve, edit |
 | J3 | Book & confirm |
@@ -22,6 +23,14 @@ Cross-reference between [user journeys](user-journeys.md) and [workspace frames]
 ---
 
 ## Matrix: journey step → frames
+
+### J0 — First login & conversational onboarding
+
+| Step | Intent | Frames | Notes |
+|------|--------|--------|-------|
+| 0.1 | Enter basic details | `interactive_form` **P** | Sign-in opens on first visit. Account creation collects email, password, name, home address and country, with optional gender and multiple citizenship or residency entries. |
+| 0.2 | Start chatting with saved details | **(C)** **P** | Master receives the profile and both summaries as YAML. Both summaries start empty. |
+| 0.3 | Share preferences or update profile facts | **(C)** **P** | Ask at relevant moments in chat. Save supplied or corrected profile and immigration facts. |
 
 ### J1 — Plan & draft
 
@@ -109,20 +118,20 @@ Cross-reference between [user journeys](user-journeys.md) and [workspace frames]
 
 ## Matrix: frame → journeys (coverage)
 
-| Frame | J1 | J2 | J3 | J4 | J5 | J6 | J7 | J8 | Load |
-|-------|----|----|----|----|----|----|----|-----|------|
-| **(C) chat** | P | P | P | S | S | P | P | P | core |
-| `interactive_form` | P | S | P | P | S | S | P | P | core |
-| `map` | P | S | — | — | S | P | S | — | core |
-| `trip_timeline` | P | P | S | S | S | P | P | S | core |
-| `calendar` | — | P | S | — | S | — | S | — | medium |
-| `diagram` | P | P | — | — | S | — | P | — | medium |
-| `agent_tasks` | S | S | P | P | — | — | S | — | medium |
-| `file_deposit` | — | — | S | P | — | — | — | — | medium |
-| `reminders` | — | — | — | — | P | S | P | — | medium |
-| `reminder_config` | — | — | — | — | P | — | S | — | low |
-| `packing_list` | — | — | — | — | P | — | — | — | low |
-| `todo_traveler` | — | — | — | — | S | S | — | — | low |
+| Frame | J0 | J1 | J2 | J3 | J4 | J5 | J6 | J7 | J8 | Load |
+|-------| ---- |----|----|----|----|----|----|----|-----|------|
+| **(C) chat** | P | P | P | P | S | S | P | P | P | core |
+| `interactive_form` | P | P | S | P | P | S | S | P | P | core |
+| `map` | — | P | S | — | — | S | P | S | — | core |
+| `trip_timeline` | — | P | P | S | S | S | P | P | S | core |
+| `calendar` | — | — | P | S | — | S | — | S | — | medium |
+| `diagram` | — | P | P | — | — | S | — | P | — | medium |
+| `agent_tasks` | — | S | S | P | P | — | — | S | — | medium |
+| `file_deposit` | — | — | — | S | P | — | — | — | — | medium |
+| `reminders` | — | — | — | — | — | P | S | P | — | medium |
+| `reminder_config` | — | — | — | — | — | P | — | S | — | low |
+| `packing_list` | — | — | — | — | — | P | — | — | — | low |
+| `todo_traveler` | — | — | — | — | — | S | S | — | — | low |
 
 Frames with **no primary (P)** row in any journey step: `todo_traveler` (only S), `reminder_config` (P in J5). `packing_list` only J5.
 
@@ -217,6 +226,7 @@ Add **`bookings_board`**, **`document_vault`**, **`pre_trip_summary`**, **`remin
 
 | Journey | Covered by current catalog? | Blockers |
 |---------|----------------------------|----------|
+| J0 Onboarding | **Yes** | First-login trigger and profile persistence need implementation |
 | J1 Plan | **Yes** | — |
 | J2 Edit | **Mostly** | Trip list (shell), diff (diagram) |
 | J3 Book | **Partial** | No bookings board; deadlines scattered |

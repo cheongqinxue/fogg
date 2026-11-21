@@ -19,7 +19,7 @@ Discover Python from the repo root. **Include** (when present):
 
 | Path | Typical role |
 |------|----------------|
-| `backend/` | Installable packages (e.g. `backend/gmaps/`) |
+| `agent/src/backend/` | Shared async Postgres pool, profile queries, and SQL migrations (`python -m backend.migrate`) |
 | `tests/` | pytest suite |
 | `benchmarks/` | Performance / regression harness |
 | `scripts/` | CLI and maintenance scripts |

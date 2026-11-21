@@ -15,6 +15,8 @@ User
  ├── bio details          (gender, home address, …)
  ├── immigration statuses (citizenship, PR, visa — per country)
  ├── preferences          (structured taste; evidenced by messages)
+ ├── preference summary   (live summary of known tastes and constraints)
+ ├── trip summary         (live summary of the user's trips)
  ├── conversation         (threads + messages — chronological record)
  ├── secrets              (credentials the user supplies for connected services)
  ├── reminders & monitors (same store — surfaced in conversation at alert_at)
@@ -70,6 +72,8 @@ The **person who plans and travels** (account holder). Trips belong to a **user*
 | **Bio details** | Master container for factual **about-the-person** fields (see below)—distinct from taste (**preferences**) and **conversation**. |
 | **Immigration statuses** | List of **citizenship**, **permanent resident**, and **visa** records per country (see below)—not a single citizenship field. |
 | **Preferences** | Structured taste and constraints used by the agent to **rank and recommend** (see below); provenance via **message** links. |
+| **Preference summary** | Live summary of the user's known preferences. Starts empty. |
+| **Trip summary** | Live summary of the user's trips. Starts empty. |
 | **Conversation** | **Threads** and **messages** (LangGraph-shaped log)—see [Conversation](#conversation). |
 | **Secrets** | User-provided **credentials** for external services the agent may call (see below)—never mixed with **messages** or **preferences**. |
 | **Reminders & monitors** | **`reminders`** rows; harness surfaces at **`alert_at`** (see [Reminders and monitors](#reminders-and-monitors)). |
@@ -82,8 +86,10 @@ The **person who plans and travels** (account holder). Trips belong to a **user*
 
 | Field | Role |
 |-------|------|
+| **Name** | Name the user provides at onboarding. |
 | **Gender** | Optional. Store only what the user provides; do not infer. |
 | **Home address** | Usual **origin** for planning (commute to airport, “from home” routes, local timezone). Geocode → **`home_geom`** (+ formatted address / viewport)—see [google-maps-alignment.md](../google-maps-alignment.md). |
+| **Home country** | Country associated with the user's home address. Citizenship, residency, and visas are recorded separately. |
 
 Add new bio fields here over time (e.g. date of birth if needed for fares)—keep **one** container rather than top-level user columns. **Citizenship and visas** live under **[immigration statuses](#immigration-status)**, not here.
 
@@ -105,6 +111,22 @@ An **immigration status** is one row in the user’s list: a legal relationship 
 | **Label** | Optional detail (e.g. tourist visa, work visa). |
 
 Used for visa hints, entry planning, and dialogue context—with explicit **not legal advice** in product. Do not store passport or visa document numbers in v1 unless paired with a secrets/PII policy.
+
+### Onboarding and profile context
+
+At account creation, the basic details form collects name, home address, and home country. Gender and immigration statuses are optional. The FOGG account owns these details regardless of which identity provider verifies the sign-in. The master agent receives the user's name, home country, recorded immigration statuses, and both summaries as YAML. The full address remains available for planning routes from home.
+
+```yaml
+name: Alex
+home_country: SG
+immigration_statuses: []
+preference_summary: null
+trip_summary: null
+```
+
+The master agent's system instructions tell it to occasionally ask for missing details during ordinary chat and save the facts the user supplies or corrects. An empty immigration list means no statuses have been recorded. While the preference summary is empty, the agent occasionally asks a travel preference question that fits the conversation, such as whether Alex prefers a cheaper fare or fewer connections.
+
+Both summaries are stored per user and updated over time. Structured preferences and trip records remain the detailed sources. The process for building and refreshing the summaries will be designed separately.
 
 ### Preferences vs conversation
 
@@ -268,7 +290,7 @@ Optional fields on a **place**—often hydrated from **`PlacesGetRequest`** (fie
 
 Examples: coordinates, address, contact, hours, rating/reviews, `priceLevel` where available. May be partial in draft; committed versions may leave gaps as explicit “unknown”.
 
-See [google-maps-alignment.md](../google-maps-alignment.md) for field-level mapping; [geospatial.md](geospatial.md) for PostGIS. Tables: [schema.dbml](schema.dbml) ([dbdiagram.io](https://dbdiagram.io)).
+See [google-maps-alignment.md](../google-maps-alignment.md) for field-level mapping; [geospatial.md](geospatial.md) for PostGIS.
 
 ---
 
@@ -545,4 +567,4 @@ Working edits happen on the **trip pool** and in **conversation** until a new pa
 - [Google Maps alignment](../google-maps-alignment.md) — FOGG ↔ Place, Waypoint, Route/Leg, Geocoding
 - [Dialogue interface](../dialogue-interface.md) — how drafts/versions appear in chat and frames
 - [Frame ↔ journey map](../frame-journey-map.md) — UI coverage
-- [schema.dbml](schema.dbml) — Postgres sketch (import at [dbdiagram.io](https://dbdiagram.io))
+- [Postgres migrations](../../agent/src/backend/migrations/) — executable definitions for implemented tables
