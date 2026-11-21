@@ -12,6 +12,21 @@ export interface MessageHistoryPage {
   next_cursor: string | null;
 }
 
+export interface SavedItinerary {
+  itinerary_version_id: string;
+  name: string | null;
+  status: "valid" | "broken" | "superseded";
+}
+
+export interface SavedTrip {
+  trip_id: string;
+  name: string;
+  starts_on: string | null;
+  ends_on: string | null;
+  head_itinerary_version_id: string | null;
+  itineraries: SavedItinerary[];
+}
+
 export interface Viewport {
   latitude: number;
   longitude: number;

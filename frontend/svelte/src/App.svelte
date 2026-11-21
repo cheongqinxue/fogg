@@ -3,10 +3,12 @@
   import { Compass, LocateFixed, LogOut, Map, Navigation } from "@lucide/svelte";
   import ChatPanel from "./components/ChatPanel.svelte";
   import MapView from "./components/MapView.svelte";
+  import SavedItineraries from "./components/SavedItineraries.svelte";
   import {
     chatContext,
     clearHistory,
     fetchHistory,
+    fetchSavedItineraries,
     fetchToolReadiness,
     streamChat,
     syncLayout,
@@ -24,6 +26,7 @@
     MapRoute,
     ToolActivity,
     ToolReadiness,
+    SavedTrip,
     SyncStatus,
     Viewport,
   } from "./lib/types";
@@ -40,6 +43,20 @@
   let evaluationCommentTimer: ReturnType<typeof setTimeout> | undefined;
   let toolReadiness = $state<ToolReadiness[]>([]);
   let apiStatus = $state<"loading" | "ready" | "unavailable">("loading");
+  let savedTrips = $state<SavedTrip[]>([]);
+  let savedTripsStatus = $state<"loading" | "ready" | "error">("loading");
+
+  async function refreshSavedTrips(): Promise<void> {
+    savedTripsStatus = "loading";
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    try {
+      const trips = await fetchSavedItineraries(controller.signal);
+      if (mounted) { savedTrips = trips; savedTripsStatus = "ready"; }
+    } catch {
+      if (mounted) savedTripsStatus = "error";
+    } finally { clearTimeout(timeout); }
+  }
 
   async function refreshToolReadiness(): Promise<void> {
     apiStatus = "loading";
@@ -68,7 +85,42 @@
   let viewportTimer: ReturnType<typeof setTimeout> | undefined;
   let localTimer: ReturnType<typeof setTimeout> | undefined;
   let mounted = false;
+  let chatPositionElement: HTMLDivElement;
+  let savedItineraryElement: HTMLDivElement;
+  let topbarElement: HTMLDivElement;
+  let overlayObserver: ResizeObserver | undefined;
   let historyGeneration = 0;
+
+  function positionSavedItineraries(): void {
+    if (!chatPositionElement || !savedItineraryElement || !topbarElement) return;
+    const isMobile = window.matchMedia("(max-width: 800px)").matches;
+    const chatRect = chatPositionElement.getBoundingClientRect();
+    const topbarBottom = topbarElement.getBoundingClientRect().bottom;
+    const routeBottom = document.querySelector<HTMLElement>(".route-summary")?.getBoundingClientRect().bottom ?? 0;
+    const hintBottom = isMobile ? document.querySelector<HTMLElement>(".map-hint")?.getBoundingClientRect().bottom ?? 0 : 0;
+    const top = Math.max(topbarBottom + 12, routeBottom ? routeBottom + 12 : 0, hintBottom + 8);
+    savedItineraryElement.style.top = `${top}px`;
+    if (isMobile) {
+      savedItineraryElement.style.left = "10px";
+      savedItineraryElement.style.right = "10px";
+      savedItineraryElement.style.width = "auto";
+      const availableHeight = Math.max(0, chatRect.top - top - 12);
+      savedItineraryElement.style.maxHeight = `${availableHeight}px`;
+      savedItineraryElement.style.setProperty("--saved-itinerary-list-max-height", `${Math.max(0, availableHeight - 52)}px`);
+    } else {
+      const availableWidth = Math.max(160, chatRect.left - 48);
+      savedItineraryElement.style.left = "24px";
+      savedItineraryElement.style.right = "auto";
+      savedItineraryElement.style.width = `${Math.min(480, availableWidth)}px`;
+      savedItineraryElement.style.maxHeight = `calc(100dvh - ${top + 24}px)`;
+      savedItineraryElement.style.setProperty("--saved-itinerary-list-max-height", "52dvh");
+    }
+  }
+
+  $effect(() => {
+    routes.length;
+    requestAnimationFrame(positionSavedItineraries);
+  });
 
   async function clearConversation(): Promise<void> {
     if (sending) throw new Error("Wait for the current response to finish.");
@@ -83,10 +135,18 @@
 
   onMount(() => {
     mounted = true;
+    requestAnimationFrame(positionSavedItineraries);
+    overlayObserver = new ResizeObserver(positionSavedItineraries);
+    if (chatPositionElement) overlayObserver.observe(chatPositionElement);
+    if (topbarElement) overlayObserver.observe(topbarElement);
+    window.addEventListener("resize", positionSavedItineraries);
     void refreshToolReadiness();
+    void refreshSavedTrips();
     void hydrate();
     return () => {
       mounted = false;
+      overlayObserver?.disconnect();
+      window.removeEventListener("resize", positionSavedItineraries);
       clearTimeout(viewportTimer);
       clearTimeout(localTimer);
       clearTimeout(evaluationCommentTimer);
@@ -405,7 +465,7 @@
   {/if}
   <div class="map-wash"></div>
 
-  <div class="topbar">
+  <div class="topbar" bind:this={topbarElement}>
     <button class="auth-logout" type="button" onclick={() => { confirmSignOut = true; }} aria-label="Sign out" title="Sign out"><LogOut size={17} /></button>
     <a class="wordmark" href="/" aria-label="FOGG home"
       ><span class="logo-symbol"><Compass size={20} strokeWidth={1.6} /></span
@@ -434,7 +494,11 @@
     }}><LocateFixed size={18} /></button
   >
 
-  <div class:expanded class="chat-position">
+  <div class="saved-itinerary-position" bind:this={savedItineraryElement}>
+    <SavedItineraries trips={savedTrips} status={savedTripsStatus} onRetry={refreshSavedTrips} />
+  </div>
+
+  <div class:expanded class="chat-position" bind:this={chatPositionElement}>
     <ChatPanel
       {messages}
       {expanded}

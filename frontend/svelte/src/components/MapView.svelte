@@ -51,7 +51,7 @@
     const bounds = L.latLngBounds(items.flatMap((item) => item.points));
     const width = host.clientWidth, height = host.clientHeight;
     const mobile = window.matchMedia("(max-width: 640px)").matches;
-    const reserved = mobile ? width - 10 : Math.min(520, width - 48) + 24;
+    const reserved = mobile ? width - 10 : Math.min(744, width - 48) + 24;
     const available = Math.max(1, width - reserved);
     const padding = Math.min(44, Math.max(0, (available - 1) / 2));
     const topLeft = L.point(padding, 44), bottomRight = L.point(width - available + padding, 44);
@@ -94,7 +94,7 @@
     const width = mapRect.width, height = mapRect.height;
     const margin = 44;
     const mobile = window.matchMedia("(max-width: 640px)").matches;
-    const potentialWidth = mobile ? width - 20 : Math.min(520, width - 48);
+    const potentialWidth = mobile ? width - 20 : Math.min(744, width - 48);
     const potentialRight = mobile ? 10 : 24;
     const area = { left: 0, top: 0, right: Math.max(1, width - potentialRight - potentialWidth), bottom: height };
     const cardArea = availableArea();

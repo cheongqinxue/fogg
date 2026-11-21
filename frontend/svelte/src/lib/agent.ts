@@ -4,6 +4,8 @@ import type {
   LayoutDocument,
   LayoutSyncResult,
   MessageHistoryPage,
+  SavedItinerary,
+  SavedTrip,
   StreamEvent,
   ToolReadiness,
   SyncStatus,
@@ -155,6 +157,34 @@ export async function fetchHistory(cursor?: string): Promise<MessageHistoryPage>
     has_more: body.has_more === true,
     next_cursor: typeof body.next_cursor === "string" ? body.next_cursor : null,
   };
+}
+
+export async function fetchSavedItineraries(signal?: AbortSignal): Promise<SavedTrip[]> {
+  const body = await requestJson(`${userPath()}/itineraries`, { signal });
+  if (!Array.isArray(body.trips)) throw new AgentError("Invalid saved itineraries response.");
+  return body.trips.flatMap((value: unknown): SavedTrip[] => {
+    if (!value || typeof value !== "object") return [];
+    const row = value as Record<string, unknown>;
+    if (typeof row.trip_id !== "string" || !row.trip_id || typeof row.name !== "string" || !Array.isArray(row.itineraries)) return [];
+    const itineraries = row.itineraries.flatMap((item: unknown): SavedItinerary[] => {
+      if (!item || typeof item !== "object") return [];
+      const itinerary = item as Record<string, unknown>;
+      if (typeof itinerary.itinerary_version_id !== "string" || !itinerary.itinerary_version_id || (itinerary.status !== "valid" && itinerary.status !== "broken" && itinerary.status !== "superseded")) return [];
+      return [{
+        itinerary_version_id: itinerary.itinerary_version_id,
+        name: typeof itinerary.name === "string" ? itinerary.name : null,
+        status: itinerary.status as SavedItinerary["status"],
+      }];
+    });
+    return [{
+      trip_id: row.trip_id,
+      name: row.name,
+      starts_on: typeof row.starts_on === "string" ? row.starts_on : null,
+      ends_on: typeof row.ends_on === "string" ? row.ends_on : null,
+      head_itinerary_version_id: typeof row.head_itinerary_version_id === "string" ? row.head_itinerary_version_id : null,
+      itineraries,
+    }];
+  });
 }
 
 export async function clearHistory(): Promise<void> {
