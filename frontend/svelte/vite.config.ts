@@ -19,7 +19,7 @@ export default defineConfig(({ mode }) => {
           "http://127.0.0.1:18080",
       ),
       "import.meta.env.VITE_AGENT_USER_ID": JSON.stringify(
-        appEnv.VITE_AGENT_USER_ID || repoEnv.AGENT_USER_ID || "default",
+        appEnv.VITE_AGENT_USER_ID || repoEnv.AGENT_USER_ID || "fogg-local-user",
       ),
     },
     server: { port: Number(repoEnv.FRONTEND_WEB_PORT_DEBUG ?? 8081) },

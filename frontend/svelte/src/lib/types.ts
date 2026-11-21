@@ -41,6 +41,20 @@ export interface ToolActivity {
   done: boolean;
 }
 
+export interface EvaluationProgress {
+  waveId: string;
+  phase: "criteria_generation" | "judging";
+}
+
+export interface ToolReadiness {
+  name: string;
+  description: string;
+  active: boolean;
+  status: "ready" | "needs_configuration";
+  message?: string;
+  credentials: { provider: string; label: string; configured: boolean }[];
+}
+
 export interface LayoutDocument {
   schema_version: number;
   map: {
@@ -56,6 +70,8 @@ export interface LayoutDocument {
 
 export type StreamEvent =
   | { type: "assistant_delta"; delta: string }
+  | { type: "evaluation_progress"; wave_id: string; phase: "criteria_generation" | "judging"; status: "started" | "completed" | "failed" }
+  | { type: "evaluation_comment"; wave_id: string; comment: string }
   | { type: "assistant_done"; layout_revision?: number; layout_hash?: string }
   | {
       type: "client_command";

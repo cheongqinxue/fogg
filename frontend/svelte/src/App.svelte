@@ -6,6 +6,7 @@
   import {
     chatContext,
     fetchHistory,
+    fetchToolReadiness,
     postUserAction,
     streamChat,
     syncLayout,
@@ -18,10 +19,12 @@
   import { DEFAULT_VIEWPORT, defaultLayout } from "./lib/types";
   import type {
     ChatMessage,
+    EvaluationProgress,
     LayoutCache,
     MapPlace,
     MapRoute,
     ToolActivity,
+    ToolReadiness,
     SyncStatus,
     Viewport,
   } from "./lib/types";
@@ -30,6 +33,23 @@
   let places = $state<MapPlace[]>([]);
   let routes = $state<MapRoute[]>([]);
   let toolActivity = $state<ToolActivity[]>([]);
+  let evaluationProgress = $state<EvaluationProgress[]>([]);
+  let evaluationComment = $state("");
+  let evaluationCommentTimer: ReturnType<typeof setTimeout> | undefined;
+  let toolReadiness = $state<ToolReadiness[]>([]);
+  let apiStatus = $state<"loading" | "ready" | "unavailable">("loading");
+
+  async function refreshToolReadiness(): Promise<void> {
+    apiStatus = "loading";
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    try {
+      const tools = await fetchToolReadiness(controller.signal);
+      if (mounted) { toolReadiness = tools; apiStatus = "ready"; }
+    } catch {
+      if (mounted) { toolReadiness = []; apiStatus = "unavailable"; }
+    } finally { clearTimeout(timeout); }
+  }
   let viewport = $state<Viewport>(DEFAULT_VIEWPORT);
   let cache = $state<LayoutCache>({
     revision: 0,
@@ -49,11 +69,13 @@
 
   onMount(() => {
     mounted = true;
+    void refreshToolReadiness();
     void hydrate();
     return () => {
       mounted = false;
       clearTimeout(viewportTimer);
       clearTimeout(localTimer);
+      clearTimeout(evaluationCommentTimer);
     };
   });
 
@@ -176,6 +198,7 @@
     if (sending) return;
     sending = true;
     toolActivity = [];
+    evaluationProgress = [];
     const userMessage: ChatMessage = {
       id: crypto.randomUUID(),
       role: "user",
@@ -226,7 +249,18 @@
         ),
       )) {
         if (!mounted) return;
-        if (event.type === "assistant_delta") {
+        if (event.type === "evaluation_progress") {
+          if (typeof event.wave_id === "string" && (event.phase === "criteria_generation" || event.phase === "judging") && (event.status === "started" || event.status === "completed" || event.status === "failed")) {
+            evaluationProgress = evaluationProgress.filter((item) => item.waveId !== event.wave_id || item.phase !== event.phase);
+            if (event.status === "started") evaluationProgress = [...evaluationProgress, { waveId: event.wave_id, phase: event.phase }];
+          }
+        } else if (event.type === "evaluation_comment") {
+          if (typeof event.wave_id === "string" && typeof event.comment === "string" && event.comment.trim()) {
+            clearTimeout(evaluationCommentTimer);
+            evaluationComment = event.comment.trim();
+            evaluationCommentTimer = setTimeout(() => { evaluationComment = ""; }, 2000);
+          }
+        } else if (event.type === "assistant_delta") {
           if (event.delta) toolActivity = [];
           updateResponse(accumulated + event.delta);
         } else if (event.type === "tool_call_start") {
@@ -305,7 +339,7 @@
       );
     } finally {
       if (paintFrame) cancelAnimationFrame(paintFrame);
-      if (mounted) { sending = false; toolActivity = []; }
+      if (mounted) { sending = false; toolActivity = []; evaluationProgress = []; }
     }
   }
 
@@ -416,6 +450,11 @@
       {expanded}
       {sending}
       {toolActivity}
+      {evaluationProgress}
+      {evaluationComment}
+      {toolReadiness}
+      {apiStatus}
+      onRefreshTools={refreshToolReadiness}
       {loadingHistory}
       loadingOlder={loadingOlderHistory}
       hasOlderMessages={hasOlderHistory}

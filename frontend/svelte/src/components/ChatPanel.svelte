@@ -3,6 +3,9 @@
   import { fade } from "svelte/transition";
   import { marked } from "marked";
   import DOMPurify from "dompurify";
+  import { saveToolCredentials, setToolActive } from "../lib/agent";
+  import SlashInteractive from "./SlashInteractive.svelte";
+  import type { SlashItem } from "../lib/slash/types";
   import {
     ArrowDown,
     ArrowUp,
@@ -13,13 +16,18 @@
     Minus,
     Sparkles,
   } from "@lucide/svelte";
-  import type { ChatMessage, SyncStatus, ToolActivity } from "../lib/types";
+  import type { ChatMessage, EvaluationProgress, SyncStatus, ToolActivity, ToolReadiness } from "../lib/types";
 
   let {
     messages,
     expanded,
     sending,
     toolActivity,
+    evaluationProgress,
+    evaluationComment,
+    toolReadiness,
+    apiStatus,
+    onRefreshTools,
     loadingHistory,
     loadingOlder = false,
     hasOlderMessages = false,
@@ -32,6 +40,11 @@
     expanded: boolean;
     sending: boolean;
     toolActivity: ToolActivity[];
+    evaluationProgress: EvaluationProgress[];
+    evaluationComment: string;
+    toolReadiness: ToolReadiness[];
+    apiStatus: "loading" | "ready" | "unavailable";
+    onRefreshTools: () => Promise<void>;
     loadingHistory: boolean;
     loadingOlder?: boolean;
     hasOlderMessages?: boolean;
@@ -42,6 +55,83 @@
   } = $props();
 
   let draft = $state("");
+  let slashMenu = $state<SlashInteractive>();
+  let slashDismissed = $state(false);
+  let toolSaveError = $state("");
+  let toolSaving = $state(false);
+  async function toggleTool(name: string, active: boolean) {
+    if (toolSaving) return;
+    toolSaving = true; toolSaveError = "";
+    try { await setToolActive(name, active); }
+    catch (error) { toolSaveError = error instanceof Error ? error.message : "Could not update tool."; }
+    finally { await onRefreshTools(); toolSaving = false; }
+  }
+  async function toggleToolGroup(tools: typeof toolReadiness, active: boolean) {
+    if (toolSaving) return;
+    toolSaving = true; toolSaveError = "";
+    try {
+      for (const tool of tools) {
+        if (tool.active !== active) await setToolActive(tool.name, active);
+      }
+    } catch (error) {
+      toolSaveError = error instanceof Error ? error.message : "Could not update tool group.";
+    } finally {
+      await onRefreshTools();
+      toolSaving = false;
+    }
+  }
+  async function submitCredentials(values: Record<string, string>) {
+    try { await saveToolCredentials(values); }
+    finally { await onRefreshTools(); }
+  }
+  const slashOpen = $derived(draft.startsWith("/") && !draft.includes("\n") && !slashDismissed);
+  const toolGroups = $derived.by(() => {
+    const definitions = [
+      { id: "google-maps", title: "Google Maps", description: "Places and route tools", matches: (provider: string) => provider === "google_maps" },
+      { id: "web-search", title: "Web Search", description: "Search the web and extract pages", matches: (provider: string) => ["tavily", "exa", "firecrawl"].includes(provider) },
+      { id: "local", title: "Local tools", description: "Tools that do not need provider credentials", matches: (_provider: string) => false },
+    ];
+    return definitions.flatMap((group) => {
+      const members = toolReadiness.filter((tool) => group.id === "local"
+        ? tool.credentials.length === 0
+        : tool.credentials.some((credential) => group.matches(credential.provider)));
+      if (!members.length) return [];
+      const active = members.every((tool) => tool.active);
+      const ready = members.every((tool) => tool.status === "ready");
+      const credentials = [...new Map(members.flatMap((tool) => tool.credentials).map((credential) => [credential.provider, credential])).values()];
+      return [{
+        id: group.id,
+        title: group.title,
+        description: group.description,
+        trailing: `[${members.filter((tool) => tool.active).length}/${members.length}]`,
+        children: [
+          { id: "group-active", title: "Enable all tools", description: ready ? "Toggle this entire group" : "Add credentials before enabling this group", indicator: { kind: "checkbox" as const, active }, disabled: toolSaving || (!active && !ready), onToggle: (next: boolean) => toggleToolGroup(members, next) },
+          ...(credentials.length ? [group.id === "web-search"
+            ? { id: "credentials", title: "Provide credentials", description: "Choose a provider", children: credentials.map((credential) => ({
+                id: credential.provider,
+                title: credential.label,
+                description: credential.configured ? "Configured" : "Not configured",
+                fields: [{ id: credential.provider, label: credential.label }],
+                onSubmit: submitCredentials,
+              })) }
+            : { id: "credentials", title: "Provide credentials", description: "Credentials shared by this group", fields: credentials.map((credential) => ({ id: credential.provider, label: `${credential.label}${credential.configured ? " (configured)" : ""}` })), onSubmit: submitCredentials }] : []),
+          ...members.map((tool) => ({
+            id: tool.name,
+            title: tool.name,
+            description: tool.description,
+            indicator: { kind: "status" as const, active: tool.active },
+            children: [
+              { id: "enabled", title: "Enable tool", description: tool.message ?? "Enable or disable this tool", indicator: { kind: "checkbox" as const, active: tool.active }, disabled: toolSaving || (!tool.active && tool.status !== "ready"), onToggle: (next: boolean) => toggleTool(tool.name, next) },
+            ],
+          })),
+        ],
+      }];
+    });
+  });
+  const slashItems = $derived<SlashItem[]>([{
+    id: "tools", title: "tools", description: "View tool configuration",
+    children: toolReadiness.length ? toolGroups : [{ id: "unavailable", title: apiStatus === "loading" ? "Checking tools…" : "API server unavailable", description: "Refresh tool status to try again", action: () => void onRefreshTools() }],
+  }]);
   let transcript: HTMLDivElement;
   let composer: HTMLTextAreaElement;
   let hasOverflow = $state(false);
@@ -134,7 +224,7 @@
 
   async function send(): Promise<void> {
     const value = draft.trim();
-    if (!value || sending) return;
+    if (!value || sending || slashOpen) return;
     draft = "";
     await tick();
     resizeComposer();
@@ -142,6 +232,7 @@
   }
 
   function onKeydown(event: KeyboardEvent): void {
+    if (slashOpen && slashMenu?.handleKey(event)) return;
     if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
       event.preventDefault();
       void send();
@@ -149,7 +240,7 @@
   }
 </script>
 
-<section class:expanded class="chat-card" aria-label="FOGG travel assistant">
+<section class:expanded class:menu-open={slashOpen} class="chat-card" aria-label="FOGG travel assistant">
   <header class="chat-header">
     <div class="brand-mark" aria-label="FOGG">
       <span class="brand-icon"><MapPinned size={17} strokeWidth={1.8} /></span>
@@ -168,6 +259,16 @@
       {#if expanded}<Minus size={19} />{:else}<Expand size={17} />{/if}
     </button>
   </header>
+
+  <details class="tool-readiness">
+    <summary>Tools · {apiStatus === "loading" ? "Checking…" : apiStatus === "unavailable" ? "API server unavailable" : `${toolReadiness.filter((tool) => tool.status === "ready").length}/${toolReadiness.length} ready`}</summary>
+    {#if apiStatus === "unavailable"}
+      <p>Could not reach the API server.</p>
+    {:else if apiStatus === "ready"}
+      <ul>{#each toolReadiness as tool}<li><strong>{tool.name}</strong> · {tool.status === "ready" ? "Ready" : "Needs configuration"}{#if tool.status === "needs_configuration" && tool.message}<span>{tool.message}</span>{/if}</li>{/each}</ul>
+    {/if}
+    <button type="button" onclick={() => void onRefreshTools()} disabled={apiStatus === "loading"}>Refresh</button>
+  </details>
 
   <div
     class:preview={!expanded}
@@ -219,7 +320,7 @@
     {/if}
   </div>
 
-  {#if toolActivity.length}
+  {#if toolActivity.length || evaluationProgress.length}
     <div class="tool-activity" aria-label="Tool activity" out:fade={{ duration: 250 }}>
       {#each toolActivity as tool (tool.id)}
         <span class="tool-item">
@@ -227,8 +328,13 @@
           <span>{tool.name}</span>
         </span>
       {/each}
+      {#each evaluationProgress as progress (`${progress.waveId}:${progress.phase}`)}
+        <span class="tool-item"><span class="tool-running"></span><span>{progress.phase === "criteria_generation" ? "Preparing evaluation" : "Evaluating results"}</span></span>
+      {/each}
     </div>
   {/if}
+
+  {#if evaluationComment}<div class="evaluation-comment" role="status" out:fade={{ duration: 250 }}>{evaluationComment}</div>{/if}
 
   {#if !expanded && messages.length > 2}
     <button class="history-link" type="button" onclick={onExpand}
@@ -238,6 +344,10 @@
     >
   {/if}
 
+  {#if slashOpen}
+    {#if toolSaveError}<p class="slash-error" role="alert">{toolSaveError}</p>{/if}
+    <SlashInteractive bind:this={slashMenu} items={slashItems} query={draft.slice(1)} onClose={() => { slashDismissed = true; }} onNavigate={() => { draft = "/"; }} />
+  {/if}
   <form
     class="composer"
     onsubmit={(event) => {
@@ -248,7 +358,7 @@
     <textarea
       bind:this={composer}
       bind:value={draft}
-      oninput={resizeComposer}
+      oninput={() => { slashDismissed = false; resizeComposer(); }}
       onkeydown={onKeydown}
       rows="1"
       placeholder="Where would you like to go?"
@@ -259,7 +369,7 @@
       class="send-button"
       type="submit"
       aria-label="Send message"
-      disabled={!draft.trim() || sending}
+      disabled={!draft.trim() || sending || slashOpen}
     >
       {#if sending}<span class="send-spinner"></span>{:else}<ArrowUp
           size={18}

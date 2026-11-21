@@ -4,6 +4,7 @@ import type {
   LayoutDocument,
   MessageHistoryPage,
   StreamEvent,
+  ToolReadiness,
   SyncStatus,
   Viewport,
 } from "./types";
@@ -12,16 +13,50 @@ import { layoutHash } from "./layout";
 const API_BASE = (
   import.meta.env.VITE_AGENT_API_BASE_URL || "http://127.0.0.1:18080"
 ).replace(/\/$/, "");
-export const USER_ID = import.meta.env.VITE_AGENT_USER_ID || "default";
+export const USER_ID = import.meta.env.VITE_AGENT_USER_ID || "fogg-local-user";
 const userPath = `/v1/users/${encodeURIComponent(USER_ID)}`;
+const DEV_TOKEN = import.meta.env.DEV ? "fogg-local-dummy-token" : "";
+
+function agentFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const headers = new Headers(init.headers);
+  const token = import.meta.env.VITE_AGENT_BEARER_TOKEN || DEV_TOKEN;
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  return fetch(`${API_BASE}${path}`, { ...init, headers });
+}
 
 export class AgentError extends Error {}
+
+export async function fetchToolReadiness(signal?: AbortSignal): Promise<ToolReadiness[]> {
+  const body = await requestJson("/v1/tools/status", { signal });
+  if (body.api_server !== "ready" || !Array.isArray(body.tools)) throw new AgentError("Invalid tool status response.");
+  return body.tools.map((item: unknown) => {
+    if (!item || typeof item !== "object") throw new AgentError("Invalid tool status response.");
+    const row = item as Record<string, unknown>;
+    if (typeof row.name !== "string" || typeof row.description !== "string" || typeof row.active !== "boolean" || !Array.isArray(row.credentials) || (row.status !== "ready" && row.status !== "needs_configuration")) throw new AgentError("Invalid tool status response.");
+    const credentials = row.credentials.map((value: unknown) => {
+      if (!value || typeof value !== "object") throw new AgentError("Invalid tool credentials response.");
+      const credential = value as Record<string, unknown>;
+      if (typeof credential.provider !== "string" || typeof credential.label !== "string" || typeof credential.configured !== "boolean") throw new AgentError("Invalid tool credentials response.");
+      return { provider: credential.provider, label: credential.label, configured: credential.configured };
+    });
+    return { name: row.name, description: row.description, active: row.active, credentials, status: row.status, ...(typeof row.message === "string" ? { message: row.message } : {}) };
+  });
+}
+
+export async function setToolActive(name: string, active: boolean): Promise<void> {
+  await requestJson(`/v1/tools/${encodeURIComponent(name)}/active`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ active }) });
+}
+
+export async function saveToolCredentials(credentials: Record<string, string>): Promise<void> {
+  const response = await agentFetch("/v1/tools/credentials", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ credentials }) });
+  if (!response.ok) throw new AgentError(`Could not save credentials (HTTP ${response.status}).`);
+}
 
 async function requestJson(
   path: string,
   init?: RequestInit,
 ): Promise<Record<string, unknown>> {
-  const response = await fetch(`${API_BASE}${path}`, {
+  const response = await agentFetch(path, {
     ...init,
     headers: { Accept: "application/json", ...init?.headers },
   });
@@ -76,7 +111,7 @@ export async function* streamChat(
   message: string,
   clientContext: Record<string, unknown>,
 ): AsyncGenerator<StreamEvent> {
-  const response = await fetch(`${API_BASE}${userPath}/chat/stream`, {
+  const response = await agentFetch(`${userPath}/chat/stream`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json; charset=utf-8",
@@ -137,7 +172,7 @@ export async function syncLayout(
 export async function postUserAction(
   body: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
-  const response = await fetch(`${API_BASE}${userPath}/user-actions`, {
+  const response = await agentFetch(`${userPath}/user-actions`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json; charset=utf-8",
