@@ -48,7 +48,8 @@ With Docker for Ollama/Redis/Postgres (no agent container): **`./scripts/compose
 - `POST /v1/users/{user_id}/chat` — JSON `{"message":"...", "client_context": optional}` — one full turn
 - `POST /v1/users/{user_id}/chat/stream` — same body, **SSE** (`text/event-stream`): `tool_call_start` (`name`, `arguments`, `run_id`), `tool_call_end` (`name`, `arguments`, `output`, `tool_call_id?`), `assistant_delta`, then `assistant_done`
 - `GET /v1/users/{user_id}/messages` — user/assistant transcript for UI restore
-- Layout and map: `GET|POST /v1/users/{user_id}/layout…`, `POST …/user-actions`
+- `DELETE /v1/users/{user_id}/messages` — clear transcript and LangGraph history; preserves layout
+- Layout and map: `GET|POST /v1/users/{user_id}/layout…` — viewport changes are saved through debounced `layout/sync`
 
 Full request/response reference: [`docs/agent-api.md`](../docs/agent-api.md).
 

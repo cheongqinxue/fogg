@@ -32,6 +32,32 @@ async def api_client() -> AsyncClient:
 
 class TestAgentApi:
     @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_clear_ui_history_deletes_thread_and_transcript_only(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from api.messages import history
+
+        calls: list[tuple[str, str]] = []
+
+        class FakeCheckpointer:
+            async def adelete_thread(self, thread_id: str) -> None:
+                calls.append(("checkpoint", thread_id))
+
+        async def delete_transcript(thread_id: str) -> int:
+            calls.append(("transcript", thread_id))
+            return 4
+
+        monkeypatch.setattr(history, "delete_thread_messages", delete_transcript)
+
+        response = await history.clear_ui_history("user-123", FakeCheckpointer())
+
+        assert calls == [("checkpoint", "user-123"), ("transcript", "user-123")]
+        assert response.cleared is True
+        assert response.transcript_messages_removed == 4
+        assert response.layout_preserved is True
+
+    @pytest.mark.unit
     def test_evaluation_sse_events_expose_only_display_contract(self) -> None:
         from api.routes.chat_handlers import _map_astream_events
 

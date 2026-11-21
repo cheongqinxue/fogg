@@ -6,6 +6,8 @@ Requires Node.js 20+ and npm.
 
 Chat streams can include `evaluation_progress` events with a wave ID, phase and status, and `evaluation_comment` events with a wave ID and display-safe comment. Progress appears alongside tool activity; comments appear above the composer for two seconds. Internal evaluation details and failures are not displayed.
 
+The clear button and `/clear` open a confirmation slider. Completing it deletes the user's conversation via `DELETE /v1/users/{user_id}/messages`; the saved map layout is retained. Map movement is persisted through the layout sync API.
+
 ## Run locally
 
 ```bash

@@ -15,10 +15,15 @@ from layout.models import (
 )
 from layout.service import sync_layout
 from layout.store import get_layout_head, get_or_create_thread_layout
-from layout.user_actions import UserActionRequest, UserActionResponse, handle_user_action
-from api.messages.history import MessageHistoryResponse, list_ui_messages
+from api.messages.history import (
+    ClearHistoryResponse,
+    MessageHistoryResponse,
+    clear_ui_history,
+    list_ui_messages,
+)
 from api.routes.chat_handlers import ChatRequest, chat_stream_response, run_chat_turn
 from api.auth import authenticated_uid, require_path_uid
+from utils.checkpointing import get_checkpointer
 
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -37,6 +42,15 @@ async def get_user_messages(
         return await list_ui_messages(require_path_uid(user_id, verified_uid), cursor)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.delete("/{user_id}/messages", response_model=ClearHistoryResponse)
+async def delete_user_messages(
+    user_id: str,
+    verified_uid: str = Depends(authenticated_uid),
+) -> ClearHistoryResponse:
+    """Clear transcript and LangGraph history while preserving the saved layout."""
+    return await clear_ui_history(require_path_uid(user_id, verified_uid), get_checkpointer())
 
 
 @router.post("/{user_id}/chat")
@@ -87,13 +101,3 @@ async def post_user_layout_sync(
 ) -> LayoutSyncResponse:
     """Reconcile client layout deltas or full config with server state."""
     return await sync_layout(require_path_uid(user_id, verified_uid), body)
-
-
-@router.post("/{user_id}/user-actions", response_model=UserActionResponse)
-async def post_user_actions(
-    user_id: str,
-    body: UserActionRequest,
-    verified_uid: str = Depends(authenticated_uid),
-) -> UserActionResponse:
-    """Record a user map gesture: layout head + checkpoint observation (no LLM turn)."""
-    return await handle_user_action(require_path_uid(user_id, verified_uid), body)

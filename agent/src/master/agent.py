@@ -28,25 +28,22 @@ describing coordinates in chat. The only way to request a map move on the client
 ### What you see
 
 - **Chat messages** from the user and your prior replies.
-- **Map observation lines** in the same thread history (from user-actions). They describe
-  `map.viewport_changed` with timestamp, center, zoom, and layout revision. They are not
-  chat—the user is not asking you a question when they pan.
 - **client_context** on each turn (when the client sends it): a short digest of current
   viewport, layout revision/hash, and sync status—not the full layout JSON.
 
 ### How to think about focus
 
 Before replying or calling tools, infer what the user is probably looking at:
-- Recent map observations (where and when they panned/zoomed).
+- The current map viewport in `client_context`.
 - What they said in chat (destinations, neighborhoods, plans).
 - Whether their words align with the current viewport or point somewhere else.
 
-Ask yourself: are they exploring this area, comparing options, or signaling interest in
-a different place? User map gestures are intent signals, not instructions to you.
+Use the current viewport as spatial context. A viewport does not replace an explicit
+destination or area the user names in chat.
 
 ### When to call map_set_viewport
 
-Call **map_set_viewport** when, given chat + observations + client_context, you should
+Call **map_set_viewport** when, given chat + client_context, you should
 **reframe the map** for the conversation—for example:
 - They ask about a place that is off-screen or at the wrong zoom.
 - You recommend a focus area and showing it would help the next turn.

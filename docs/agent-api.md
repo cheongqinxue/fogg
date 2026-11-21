@@ -30,14 +30,13 @@ Each row is one deliverable. Check **Agent** when the FastAPI / LangGraph side l
 | `POST /v1/users/{user_id}/layout/sync` | [x] | [x] |
 | `GET /v1/users/{user_id}/layout` (revision / hash only) | [x] | [x] |
 | `GET /v1/users/{user_id}/messages` (UI chat restore) | [x] | [x] |
+| `DELETE /v1/users/{user_id}/messages` (clear transcript + checkpoints; keep layout) | [x] | [x] |
 | `client_context` on `POST /v1/users/{user_id}/chat` (+ stream) | [x] | [x] |
 | LLM layout digest from `client_context` + server layout | [x] | — |
 | SSE `client_command` (emit) | [x] | [x] |
 | Command `map.set_viewport` (apply + validate) | [x] | [x] |
 | Confirm agent command via `layout/sync` (`applied`) | [x] | [x] |
-| User viewport `proposed_delta` via `layout/sync` (throttled) | [ ] | [x] |
-| **`POST …/user-actions`** — map pan → thread observation + layout head | [x] | [x] |
-| Checkpointed **map observation messages** (not shown in chat UI) | [x] | — |
+| User viewport `proposed_delta` via `layout/sync` (debounced) | [x] | [x] |
 | Tool **`map_set_viewport`** → SSE `client_command` only | [x] | — |
 | Agent **adjudicates** map moves (no `client_command` without tool) | [x] | — |
 | `sync_mode: full` on failure / desync | [ ] | [x] |
@@ -47,7 +46,7 @@ Each row is one deliverable. Check **Agent** when the FastAPI / LangGraph side l
 
 ## Client boundary
 
-The **browser client must not** call backend services directly (Google Maps, trip store, Postgres, etc.). All product I/O goes **client → agent → backend**. The client keeps a **local layout cache** for instant UI and offline use; the **authoritative layout** for a `user_id` lives on the **agent** (layout store + checkpointer), updated via **`layout/sync`** and **`user-actions`**.
+The **browser client must not** call backend services directly (Google Maps, trip store, Postgres, etc.). All product I/O goes **client → agent → backend**. The client keeps a **local layout cache** for instant UI and offline use; the **authoritative layout** for a `user_id` lives on the **agent** (layout store + checkpointer), updated via **`layout/sync`**.
 
 **Map camera:** User gestures **move the client map immediately** and **report** what they did. The **agent** (LLM + tools) decides whether to **command** a new viewport on later turns. **Only** a successful **`map_set_viewport` tool** may emit **`client_command`** (`map.set_viewport`). Do not infer map moves from `tool_call_end` text or silent merge rules alone.
 
@@ -62,9 +61,9 @@ The **browser client must not** call backend services directly (Google Maps, tri
 | `POST` | `/v1/users/{user_id}/chat` | One full agent turn (blocking) |
 | `POST` | `/v1/users/{user_id}/chat/stream` | Same turn, **Server-Sent Events** |
 | `POST` | `/v1/users/{user_id}/layout/sync` | Layout reconcile (user/agent deltas or full config) — [ ] Agent · [x] UI |
-| `POST` | `/v1/users/{user_id}/user-actions` | User map gesture → observation message + layout head — [ ] Agent · [x] UI |
 | `GET` | `/v1/users/{user_id}/layout` | Optional lightweight revision / hash check — [ ] Agent · [x] UI |
 | `GET` | `/v1/users/{user_id}/messages` | User/assistant transcript for UI restore — [x] Agent · [x] UI |
+| `DELETE` | `/v1/users/{user_id}/messages` | Clear transcript and LangGraph thread history; preserve layout |
 
 ### Tool readiness
 
@@ -91,11 +90,13 @@ If the API server cannot be reached, the status endpoint cannot return a respons
 
 ### Thread persistence (LangGraph checkpointer)
 
-**Track:** [x] Agent chat history · [x] map observations · [x] layout store
+**Track:** [x] Agent chat history · [x] layout store
 
 Each `POST /v1/users/{user_id}/chat` or `/v1/users/{user_id}/chat/stream` turn uses the **verified UID** as the LangGraph config key (`configurable.thread_id`). The path value must match the verified UID. The compiled ReAct graph uses **`AsyncPostgresSaver`** so message state is **loaded and extended** per thread instead of starting empty every request.
 
 Set **`AGENT_DATABASE_URL`** or **`DATABASE_URL`** (same Postgres as the backend stub in compose). Checkpoint tables are created on startup via `checkpointer.setup()`. FastAPI **`lifespan`** in `api.app` calls `init_checkpointer()` before the graph singleton is built — run the agent via **`uvicorn api.app:app`**, not a bare graph import, so Postgres is wired.
+
+`DELETE /v1/users/{user_id}/messages` removes that user's transcript rows and LangGraph checkpoint thread. It preserves the independent layout row, including the last saved viewport.
 
 ---
 
@@ -105,7 +106,7 @@ Set **`AGENT_DATABASE_URL`** or **`DATABASE_URL`** (same Postgres as the backend
 
 Both sides hold a **layout document** per `user_id` (URL path; stored under the same key in Postgres). The client copy is a **cache** (offline queue, optimistic UI). The server copy is **durable state** (revision/hash/document) used by tools, `client_context`, and digests.
 
-A **checkpointed conversation thread** (same `user_id`) holds user chat plus **map observation messages** from `user-actions` so the model can adjudicate whether to call **`map_set_viewport`** on a later turn.
+The layout row is independent of chat history. Clearing a conversation does not reset its saved map viewport.
 
 ### Document (schema v1)
 
@@ -147,82 +148,30 @@ Clients store `revision` + `layout_hash` with the cached document. On desync, th
 
 | Actor | Client UI | Agent thread | Canonical `layout` |
 |--------|-----------|--------------|-------------------|
-| **User pans/zooms** | Map moves at once | **`user-actions`** appends an **observation message** (see below) | Server updates **user viewport** in layout row (same facts as `proposed_delta`) |
+| **User pans/zooms** | Map moves at once | No conversation message is added | Debounced `layout/sync` `proposed_delta` persists the current viewport |
 | **User sends chat** | — | Normal user message; model sees thread + `client_context` | Unchanged unless sync runs |
 | **Agent should focus map** | — | Model calls tool **`map_set_viewport`** | Tool may update server layout when command is accepted |
 | **Agent commands UI** | Apply **`client_command`** | Only emitted when **`map_set_viewport`** runs | Confirm with **`layout/sync`** `applied` |
 
-**Adjudication:** Whether to move the map after a user pan is **not** a hard server merge rule. The model reads **when** the user moved, **where** they looked, and **what** was said in chat, then **chooses** to call **`map_set_viewport`** or not. Policy text lives in **`SYSTEM_PROMPT`** in [`agent/src/master/agent.py`](../agent/src/master/agent.py) (focus inference, when to call the tool vs stay silent). Optional server guard: do not emit `client_command` if the tool’s target viewport is unchanged or invalid.
+**Adjudication:** The model receives the **current viewport** in each turn's `client_context` digest and decides whether to call **`map_set_viewport`**. It does not receive a history of pans. Policy text lives in **`SYSTEM_PROMPT`** in [`agent/src/master/agent.py`](../agent/src/master/agent.py) (focus inference, when to call the tool vs stay silent). Optional server guard: do not emit `client_command` if the tool’s target viewport is unchanged or invalid.
 
-**`layout/sync`:** Still used for **`applied`** acks after `client_command`, **`sync_mode: full`** on desync, and (today) throttled **`proposed_delta`** until **`user-actions`** is implemented on the client. Long term: pan → **`user-actions`**; keep **`layout/sync`** for agent confirmations and realign.
+**`layout/sync`:** Used for debounced user viewport `proposed_delta`, **`applied`** acknowledgements after `client_command`, and **`sync_mode: full`** on desync. Viewport changes update layout only; they do not append conversation messages.
 
 ---
 
-## `POST /v1/users/{user_id}/user-actions`
+## `DELETE /v1/users/{user_id}/messages`
 
-**Track:** [x] Agent · [x] UI — POST after debounced pan; falls back to `layout/sync` `proposed_delta` on 404
-
-Reports a **user-initiated** product action so the **checkpointer** thread and **layout head** stay aligned with what the user did on the map. This route does **not** run an LLM turn and does **not** emit SSE.
-
-### Request
-
-Throttled after map gesture (same UX as layout sync, ~300ms after pan end):
+Clears the authenticated user's transcript and LangGraph checkpoint thread while preserving
+the layout document and saved viewport. The operation is idempotent. The UI should ask the
+user to confirm before calling it.
 
 ```json
 {
-  "action": "map.viewport_changed",
-  "occurred_at": "2026-11-09T05:00:00.000Z",
-  "client_revision": 12,
-  "payload": {
-    "center": { "lat": 35.68, "lng": 139.76 },
-    "zoom": 10,
-    "label": null
-  }
+  "cleared": true,
+  "transcript_messages_removed": 12,
+  "layout_preserved": true
 }
 ```
-
-| Field | Required | Notes |
-|-------|----------|--------|
-| `action` | yes | v1: **`map.viewport_changed`** only; extend later (`workspace.*`, …) |
-| `occurred_at` | yes | Client ISO-8601 UTC; used in observation text and ordering |
-| `client_revision` | yes | Client’s last known server `revision`; stale value → reject or force realign |
-| `payload` | yes | Same viewport shape as layout `map.viewport` (`center`, `zoom`, optional `label`) |
-
-### Response
-
-```json
-{
-  "accepted": true,
-  "revision": 13,
-  "layout_hash": "b7c2…",
-  "reject_reason": null
-}
-```
-
-| Field | Notes |
-|-------|--------|
-| `accepted` | `false` if `client_revision` stale (same semantics as `layout/sync`) |
-| `revision` | New head after accepting the user viewport |
-| `layout_hash` | Canonical hash after update |
-
-### Server behavior (agent)
-
-1. **Validate** `user_id` (path), `action`, `payload`.
-2. **Layout row:** Apply user viewport to the durable layout document (equivalent to `proposed_delta` with `source: user`); bump `revision` and `layout_hash` when accepted.
-3. **Checkpoint:** Append one **observation message** to the LangGraph thread (same `user_id` / `thread_id` key). Recommended shape for v1:
-   - **Role:** `human` or `system` (pick one in implementation; **do not** render as a chat bubble in the browser UI).
-   - **Content (example):**
-     `Map action (map.viewport_changed) at 2026-11-09T05:00:00Z: center=(35.68, 139.76) zoom=10. Client revision was 12; server revision now 13.`
-   - **Metadata (optional):** `{ "kind": "user_action", "action": "map.viewport_changed" }`.
-4. **No** `client_command` from this route—the user already moved the map locally.
-
-### Client behavior (target)
-
-1. User pans → update local cache and map in [`frontend/svelte/src/App.svelte`](../frontend/svelte/src/App.svelte).
-2. `POST …/user-actions` with debounce.
-3. Store returned `revision` / `layout_hash`. On `accepted: false`, follow existing **desync** path (`layout/sync` full or realign from response when agent adds body fields later).
-
-**Migration:** UI today may still call **`layout/sync`** `proposed_delta` only ([x] UI). When **`user-actions`** lands, call **`user-actions`** for agent observability and keep **`layout/sync`** for `applied` / full sync.
 
 ---
 
@@ -260,7 +209,7 @@ The conversation partition key is the path segment **`user_id`** (not a JSON fie
 
 **Track:** [x] Agent · — — layout digest injection (system message, `kind: client_context`)
 
-The agent injects a **short digest** from `client_context` + server layout (e.g. viewport, chat mode, `sync_status`) into harness state / system context — **not** the full layout JSON every turn. The model also sees **checkpointed messages**, including **map observations** from **`user-actions`**, on the next chat turn. Tools and the model reason over **server layout head** plus that thread history.
+The agent injects a **short digest** from `client_context` + server layout (e.g. current viewport, chat mode, `sync_status`) into harness state / system context — **not** the full layout JSON every turn. The model receives the current viewport, not a history of viewport changes. Legacy synthetic viewport-action messages in old checkpoints are filtered from model input.
 
 | `sync_status` | Meaning for the model |
 |---------------|------------------------|
@@ -273,13 +222,13 @@ The agent injects a **short digest** from `client_context` + server layout (e.g.
 
 ## `POST /v1/users/{user_id}/layout/sync`
 
-**Track:** [ ] Agent · [x] UI — endpoint client, throttled user deltas (animated realign [ ] UI)
+**Track:** [x] Agent · [x] UI — endpoint client, throttled user deltas (animated realign [ ] UI)
 
 **Client-initiated** reconcile. The client is responsible for noticing desync; the server returns the **canonical** layout.
 
 ### Request — delta (normal path)
 
-After **user** gesture (throttled) — **legacy / parallel path** until **`user-actions`** is wired on the client; prefer **`user-actions`** for new work:
+After a **user** gesture (debounced):
 
 ```json
 {
@@ -374,7 +323,7 @@ Query: `?revision=12`. Response: `{ "revision", "layout_hash" }` only. If hash d
 
 ## `GET /v1/users/{user_id}/messages`
 
-Returns the UI transcript from the independent Postgres conversation-history table. This store is separate from LangGraph checkpoint state: model/tool context can change without changing the persisted user-facing transcript. Only user and completed assistant messages are written; client-context digests, map observations, and tool messages are excluded.
+Returns the UI transcript from the independent Postgres conversation-history table. This store is separate from LangGraph checkpoint state: model/tool context can change without changing the persisted user-facing transcript. Only user and completed assistant messages are written; client-context digests and tool messages are excluded.
 
 ### Query parameters
 
@@ -448,7 +397,7 @@ Clients should parse each `data:` line as JSON and branch on **`type`**.
 | **Tool evaluation** | `evaluation_progress`, `evaluation_comment` | Limited-search progress and short judge comment |
 | **Client** | `client_command` — [x] Agent · [x] UI | **Agent-initiated** UI ops from **`map_set_viewport` only**; apply + `layout/sync` `applied` |
 
-Assistant and tool events are for **reading** and **debugging**. **`client_command`** is for **agent-requested** map moves only. Do not infer UI commands from `tool_call_end.output` alone. User pans are **`user-actions`**, not SSE.
+Assistant and tool events are for **reading** and **debugging**. **`client_command`** is for **agent-requested** map moves only. Do not infer UI commands from `tool_call_end.output` alone. User pans persist through `layout/sync`; they are not SSE events.
 
 ### Event types
 
@@ -629,16 +578,15 @@ The Svelte client parses stream events in [`frontend/svelte/src/lib/agent.ts`](.
 **User sends chat**
 
 1. Client reads local cache → `client_context` on `POST /v1/users/{user_id}/chat/stream`.
-2. Model sees prior **`user-actions`** observations and chat history; may call **`map_set_viewport`**.
+2. Model sees chat history and the current viewport digest; it may call **`map_set_viewport`**.
 3. SSE: **`client_command`** only if that tool ran → client apply → `layout/sync` (`applied`).
 4. `assistant_done` optional `layout_revision` / `layout_hash` → resync if mismatched.
 
 **User pans map (no chat)**
 
 1. Update local cache and map immediately.
-2. Throttled **`POST …/user-actions`** (`map.viewport_changed`) ([x] UI; agent [ ]).
-3. Fallback: throttled **`layout/sync`** `proposed_delta` if `user-actions` returns 404 ([x] UI).
-4. Store `revision` / `layout_hash`; no `client_command`. Agent may react on a **later** chat turn.
+2. Debounced **`POST …/layout/sync`** `proposed_delta` stores the current viewport in the layout row.
+3. Store `revision` / `layout_hash`; no conversation message or `client_command` is added. On the next chat turn the model receives the current viewport only.
 
 **Agent focuses map (during chat)**
 

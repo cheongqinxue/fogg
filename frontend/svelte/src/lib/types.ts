@@ -96,6 +96,11 @@ export interface LayoutCache {
   layout: LayoutDocument;
 }
 
+export interface LayoutSyncResult extends LayoutCache {
+  accepted: boolean;
+  reject_reason?: string | null;
+}
+
 export const DEFAULT_VIEWPORT: Viewport = {
   latitude: 1.3521,
   longitude: 103.8198,

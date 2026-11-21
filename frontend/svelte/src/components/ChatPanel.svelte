@@ -5,6 +5,7 @@
   import DOMPurify from "dompurify";
   import { saveToolCredentials, setToolActive } from "../lib/agent";
   import SlashInteractive from "./SlashInteractive.svelte";
+  import SlideConfirm from "./SlideConfirm.svelte";
   import type { SlashItem } from "../lib/slash/types";
   import {
     ArrowDown,
@@ -15,6 +16,7 @@
     MessageCircle,
     Minus,
     Sparkles,
+    Trash2,
   } from "@lucide/svelte";
   import type { ChatMessage, EvaluationProgress, SyncStatus, ToolActivity, ToolReadiness } from "../lib/types";
 
@@ -35,6 +37,7 @@
     onExpand,
     onLoadOlder,
     onSend,
+    onClear,
   }: {
     messages: ChatMessage[];
     expanded: boolean;
@@ -52,9 +55,12 @@
     onExpand: () => void;
     onLoadOlder?: () => Promise<void>;
     onSend: (message: string) => Promise<void>;
+    onClear: () => Promise<void>;
   } = $props();
 
   let draft = $state("");
+  let clearOpen = $state(false);
+  function openClear() { if (!sending) { clearOpen = true; slashDismissed = true; draft = ""; } }
   let slashMenu = $state<SlashInteractive>();
   let slashDismissed = $state(false);
   let toolSaveError = $state("");
@@ -128,7 +134,7 @@
       }];
     });
   });
-  const slashItems = $derived<SlashItem[]>([{
+  const slashItems = $derived<SlashItem[]>([{ id: "clear", title: "clear", description: "Clear conversation history", disabled: sending, action: openClear }, {
     id: "tools", title: "tools", description: "View tool configuration",
     children: toolReadiness.length ? toolGroups : [{ id: "unavailable", title: apiStatus === "loading" ? "Checking tools…" : "API server unavailable", description: "Refresh tool status to try again", action: () => void onRefreshTools() }],
   }]);
@@ -224,7 +230,7 @@
 
   async function send(): Promise<void> {
     const value = draft.trim();
-    if (!value || sending || slashOpen) return;
+    if (!value || sending || slashOpen || clearOpen) return;
     draft = "";
     await tick();
     resizeComposer();
@@ -250,6 +256,7 @@
       <span class="status-dot" class:offline={syncStatus === "offline"}></span>
       <span>{syncStatus === "offline" ? "Offline" : "Trip planner"}</span>
     </div>
+    <button class="icon-button expand-button" type="button" aria-label="Clear conversation" title="Clear conversation" disabled={sending} onclick={openClear}><Trash2 size={16} /></button>
     <button
       class="expand-button icon-button"
       type="button"
@@ -382,3 +389,4 @@
     ><span>to send</span>
   </footer>
 </section>
+{#if clearOpen}<SlideConfirm title="Clear conversation?" description="This clears the conversation history. Your map layout stays saved." onConfirm={onClear} onCancel={() => { clearOpen = false; }} />{/if}

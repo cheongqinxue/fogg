@@ -2,6 +2,7 @@ import type {
   ChatMessage,
   LayoutCache,
   LayoutDocument,
+  LayoutSyncResult,
   MessageHistoryPage,
   StreamEvent,
   ToolReadiness,
@@ -107,6 +108,11 @@ export async function fetchHistory(cursor?: string): Promise<MessageHistoryPage>
   };
 }
 
+export async function clearHistory(): Promise<void> {
+  const response = await agentFetch(`${userPath}/messages`, { method: "DELETE" });
+  if (!response.ok) throw new AgentError(`Could not clear conversation (HTTP ${response.status}).`);
+}
+
 export async function* streamChat(
   message: string,
   clientContext: Record<string, unknown>,
@@ -161,29 +167,12 @@ export async function* streamChat(
 
 export async function syncLayout(
   body: Record<string, unknown>,
-): Promise<LayoutCache> {
+): Promise<LayoutSyncResult> {
   return (await requestJson(`${userPath}/layout/sync`, {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify(body),
-  })) as unknown as LayoutCache;
-}
-
-export async function postUserAction(
-  body: Record<string, unknown>,
-): Promise<Record<string, unknown>> {
-  const response = await agentFetch(`${userPath}/user-actions`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json; charset=utf-8",
-      Accept: "application/json",
-    },
-    body: JSON.stringify(body),
-  });
-  if (response.status === 404) throw new AgentError("USER_ACTIONS_UNAVAILABLE");
-  if (!response.ok)
-    throw new AgentError(`User action failed (${response.status}).`);
-  return (await response.json()) as Record<string, unknown>;
+  })) as unknown as LayoutSyncResult;
 }
 
 export function viewportFromLayout(layout: LayoutDocument): Viewport {

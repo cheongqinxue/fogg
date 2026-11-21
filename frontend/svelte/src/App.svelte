@@ -5,9 +5,9 @@
   import MapView from "./components/MapView.svelte";
   import {
     chatContext,
+    clearHistory,
     fetchHistory,
     fetchToolReadiness,
-    postUserAction,
     streamChat,
     syncLayout,
     viewportFromLayout,
@@ -66,6 +66,18 @@
   let viewportTimer: ReturnType<typeof setTimeout> | undefined;
   let localTimer: ReturnType<typeof setTimeout> | undefined;
   let mounted = false;
+  let historyGeneration = 0;
+
+  async function clearConversation(): Promise<void> {
+    if (sending) throw new Error("Wait for the current response to finish.");
+    await clearHistory();
+    historyGeneration++;
+    messages = [];
+    hasOlderHistory = false;
+    olderHistoryCursor = null;
+    loadingOlderHistory = false;
+    loadingHistory = false;
+  }
 
   onMount(() => {
     mounted = true;
@@ -80,12 +92,13 @@
   });
 
   async function hydrate(): Promise<void> {
+    const generation = historyGeneration;
     cache = await loadLayout(USER_ID);
     viewport = viewportFromLayout(cache.layout);
     await Promise.all([
       fetchHistory()
         .then((page) => {
-          if (mounted) {
+          if (mounted && generation === historyGeneration) {
             messages = page.messages;
             hasOlderHistory = page.has_more;
             olderHistoryCursor = page.next_cursor;
@@ -100,9 +113,10 @@
   async function loadOlderHistory(): Promise<void> {
     if (loadingOlderHistory || !hasOlderHistory || !olderHistoryCursor) return;
     loadingOlderHistory = true;
+    const generation = historyGeneration;
     try {
       const page = await fetchHistory(olderHistoryCursor);
-      if (!mounted) return;
+      if (!mounted || generation !== historyGeneration) return;
       const existing = new Set(messages.map((message) => message.id));
       messages = [
         ...page.messages.filter((message) => !existing.has(message.id)),
@@ -131,47 +145,20 @@
 
   async function reportViewport(next: Viewport): Promise<void> {
     try {
-      const payload = viewportPayload(next);
-      const response = await postUserAction({
-        action: "map.viewport_changed",
-        occurred_at: new Date().toISOString(),
+      const result = await syncLayout({
         client_revision: cache.revision,
-        payload,
+        proposed_delta: { op: "map.set_viewport", source: "user", payload: viewportPayload(next) },
       });
-      if (response.accepted === false) {
+      cache = result;
+      if (!result.accepted) {
         syncStatus = "conflict";
-        await fullSync();
-      } else {
-        cache = {
-          ...cache,
-          revision: Number(response.revision ?? cache.revision),
-          layout_hash: String(response.layout_hash ?? cache.layout_hash),
-        };
-        syncStatus = "ok";
+        viewport = viewportFromLayout(result.layout);
         saveLayout(USER_ID, cache);
+        return;
       }
-    } catch (error) {
-      if (
-        error instanceof Error &&
-        error.message === "USER_ACTIONS_UNAVAILABLE"
-      ) {
-        try {
-          const result = await syncLayout({
-            client_revision: cache.revision,
-            proposed_delta: {
-              op: "map.set_viewport",
-              source: "user",
-              payload: viewportPayload(next),
-            },
-          });
-          cache = result;
-          syncStatus = "ok";
-          saveLayout(USER_ID, cache);
-          return;
-        } catch {
-          /* Keep the local camera and mark the cache offline below. */
-        }
-      }
+      syncStatus = "ok";
+      saveLayout(USER_ID, cache);
+    } catch {
       syncStatus = "offline";
     }
   }
@@ -455,6 +442,7 @@
       {toolReadiness}
       {apiStatus}
       onRefreshTools={refreshToolReadiness}
+      onClear={clearConversation}
       {loadingHistory}
       loadingOlder={loadingOlderHistory}
       hasOlderMessages={hasOlderHistory}

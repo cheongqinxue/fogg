@@ -6,7 +6,7 @@ import logging
 
 from pydantic import ValidationError
 
-from layout.models import LayoutDocument, LayoutSyncRequest, LayoutSyncResponse, ProposedDelta
+from layout.models import LayoutDocument, LayoutSyncRequest, LayoutSyncResponse
 from layout.store import ThreadLayoutRow, get_or_create_thread_layout, upsert_thread_layout
 
 logger = logging.getLogger(__name__)
@@ -123,21 +123,3 @@ async def sync_layout(thread_id: str, request: LayoutSyncRequest) -> LayoutSyncR
     except ValueError as exc:
         logger.info("Layout sync rejected for thread %s: %s", thread_id, exc)
         return _response_from_row(row, accepted=False, reject_reason=str(exc))
-
-
-async def sync_user_viewport_layout(
-    thread_id: str,
-    *,
-    client_revision: int,
-    payload: dict,
-) -> LayoutSyncResponse:
-    """Update layout from a user viewport payload (``user-actions`` / pan)."""
-    request = LayoutSyncRequest(
-        client_revision=client_revision,
-        proposed_delta=ProposedDelta(
-            op="map.set_viewport",
-            source="user",
-            payload=payload,
-        ),
-    )
-    return await sync_layout(thread_id, request)

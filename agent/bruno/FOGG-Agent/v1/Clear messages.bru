@@ -1,0 +1,20 @@
+meta {
+  name: Clear messages
+  type: http
+  seq: 9
+}
+
+delete {
+  url: {{baseUrl}}/v1/users/default/messages
+  body: none
+  auth: none
+}
+
+headers {
+  Accept: application/json
+}
+
+docs {
+  Clears the user's chat transcript and LangGraph checkpoint history. Preserves the saved layout and map viewport.
+  The UI should confirm with the user before calling this endpoint.
+}

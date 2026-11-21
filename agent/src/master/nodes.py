@@ -47,7 +47,18 @@ def build_model_node(
     )
 
     async def call_model(state):
-        result = await model_node(state)
+        messages = state.get("messages") or []
+        # Older checkpoints may still contain synthetic viewport-action messages.
+        # They are no longer part of the agent's product context.
+        model_state = {
+            **state,
+            "messages": [
+                message
+                for message in messages
+                if (getattr(message, "additional_kwargs", None) or {}).get("kind") != "user_action"
+            ],
+        }
+        result = await model_node(model_state)
         return {**result, "tool_judge_feedback": None}
 
     return call_model

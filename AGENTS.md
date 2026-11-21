@@ -83,7 +83,7 @@ The app reads `AGENT_API_BASE_URL`, `AGENT_USER_ID`, and frontend port values fr
 | `agent/tests/test_agent_api.py`, `test_agent_checkpoint.py` | Agent HTTP API, streaming/checkpoint behavior |
 | `agent/tests/test_client_context.py`, `test_message_history.py` | Client context and checkpoint-backed transcript history |
 | `agent/tests/test_layout_hash.py`, `test_layout_sync.py`, `test_map_set_viewport.py` | Layout hashing/sync and map viewport tool behavior |
-| `agent/tests/test_user_actions.py`, `test_dev_reset.py` | User actions and development reset behavior |
+| `agent/tests/test_dev_reset.py` | Development reset behavior |
 
 Run unit tests: `uv run pytest -m unit` (same as pre-commit). Integration: `uv run pytest -m integration`. Benchmarks: `uv run pytest benchmarks/ -m benchmark`.
 
@@ -118,7 +118,7 @@ Use **Postman** (Google Maps Platform workspace) for API exploration — not che
 
 | Module | Role |
 |--------|------|
-| `master/routes/` | `/v1` health and user-scoped chat, SSE, messages, layout, and user-actions; `chat_handlers.py` and `chat_messages.py` split chat orchestration/history routes |
+| `master/routes/` | `/v1` health and user-scoped chat, SSE, messages, and layout; `chat_handlers.py` and `chat_messages.py` split chat orchestration/history routes |
 | `master/agent.py`, `master/graph_utils/` | `create_agent` + lazy `get_graph()`; graph state, nodes, and tools |
 | `utils/` | Shared database URL, environment loading, and request-scoped context helpers |
 | `layout/` | Independent layout store, sync, and map viewport functionality |
@@ -126,7 +126,7 @@ Use **Postman** (Google Maps Platform workspace) for API exploration — not che
 | `web_search_tool/` | Tavily, Exa, and Firecrawl adapters behind the `web_search` and `web_extract` tools |
 | `api/app.py`, `api/main.py`, `api/routes/`, `api/messages/` | FastAPI service/lifespan, Uvicorn entrypoints, HTTP routes, and transcript endpoint handling |
 | `api/dev_reset.py` | Development-only data reset behavior |
-| `master/layout/` | Postgres layout rows, models, hashing/sync rules, client context, user actions, and `map_set_viewport` tool implementation (`_tool.py`) |
+| `master/layout/` | Postgres layout rows, models, hashing/sync rules, client context, and `map_set_viewport` tool implementation (`_tool.py`) |
 | `master/messages/history.py` | Checkpoint-backed transcript history for the client |
 | `utils/checkpointing.py` | `AsyncPostgresSaver` checkpointer |
 

@@ -54,6 +54,24 @@ async def test_model_node_trims_history_and_keeps_system_prompt(
 
 
 @pytest.mark.asyncio
+async def test_model_node_omits_legacy_viewport_action_messages() -> None:
+    from master.nodes import build_model_node
+
+    action = HumanMessage(
+        content="Map action map.viewport_changed at an old timestamp.",
+        additional_kwargs={"kind": "user_action", "action": "map.viewport_changed"},
+    )
+    request = HumanMessage(content="Recommend somewhere for dinner.")
+    model = FakeModel([AIMessage(content="Sure.")])
+    node = build_model_node(model, system_prompt="system", token_counter=len)
+
+    await node({"messages": [action, request]})
+
+    assert request in model.received[0]
+    assert all(message is not action for message in model.received[0])
+
+
+@pytest.mark.asyncio
 async def test_model_node_preserves_latest_user_request_when_tool_history_overflows(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

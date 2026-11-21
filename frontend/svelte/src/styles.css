@@ -385,6 +385,13 @@ body {
 .slash-dialogue input { width: 100%; padding: 6px; }
 .slash-dialogue p, .slash-empty { margin: 8px 10px; color: #a5b9ad; }
 .slash-error { color: #ffc5b8; font-size: 11px; margin: 4px; overflow-wrap: anywhere; }
+.confirm-overlay { position: fixed; inset: 0; z-index: 2000; display: grid; place-items: center; padding: 20px; background: rgba(0,0,0,.55); }
+.confirm-dialog { width: min(360px, 100%); border-radius: 16px; padding: 20px; background: #1a2926; color: #edf4f1; box-shadow: 0 12px 48px rgba(0,0,0,.4); }
+.confirm-dialog h2 { font-size: 17px; margin: 0 0 10px; }
+.confirm-dialog p, .confirm-dialog label { font-size: 13px; line-height: 1.5; }
+.confirm-dialog label { display: grid; gap: 8px; }
+.confirm-dialog input { width: 100%; accent-color: #82d7b8; }
+.confirm-dialog button { margin-top: 14px; padding: 7px 12px; border: 1px solid #789086; border-radius: 7px; color: inherit; background: transparent; cursor: pointer; }
 .tool-item { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; color: #c1d0c8; font-size: 10px; }
 .tool-running { width: 12px; height: 12px; border: 2px solid rgba(159, 225, 199, 0.25); border-top-color: #9fe1c7; border-radius: 50%; animation: spin 0.8s linear infinite; }
 .tool-done { display: inline-flex; align-items: center; justify-content: center; width: 13px; height: 13px; border-radius: 50%; background: #218964; color: #fff; }

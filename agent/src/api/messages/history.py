@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
-from api.messages.store import decode_cursor, encode_cursor, list_messages
+from api.messages.store import (
+    decode_cursor,
+    delete_thread_messages,
+    encode_cursor,
+    list_messages,
+)
 
 
 class UiMessage(BaseModel):
@@ -25,6 +30,14 @@ class MessageHistoryResponse(BaseModel):
     messages: list[UiMessage]
     has_more: bool
     next_cursor: str | None
+
+
+class ClearHistoryResponse(BaseModel):
+    """Result of clearing chat and checkpoint history while preserving layout."""
+
+    cleared: bool
+    transcript_messages_removed: int
+    layout_preserved: bool = True
 
 
 async def list_ui_messages(user_id: str, cursor: str | None = None) -> MessageHistoryResponse:
@@ -47,3 +60,10 @@ async def list_ui_messages(user_id: str, cursor: str | None = None) -> MessageHi
     ]
     next_cursor = encode_cursor(int(rows[0]["id"])) if has_more and rows else None
     return MessageHistoryResponse(messages=messages, has_more=has_more, next_cursor=next_cursor)
+
+
+async def clear_ui_history(thread_id: str, checkpointer: Any) -> ClearHistoryResponse:
+    """Clear a user's LangGraph thread and UI transcript, leaving layout intact."""
+    await checkpointer.adelete_thread(thread_id)
+    removed = await delete_thread_messages(thread_id)
+    return ClearHistoryResponse(cleared=True, transcript_messages_removed=removed)

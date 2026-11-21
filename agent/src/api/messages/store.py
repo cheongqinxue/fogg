@@ -286,8 +286,12 @@ async def list_messages(thread_id: str, before_id: int | None = None) -> tuple[l
 
 
 async def delete_thread_messages(thread_id: str) -> int:
-    """Delete transcript rows for one thread (development reset)."""
+    """Delete transcript rows for one thread without touching its layout."""
     async with _pool().connection() as conn:
+        await conn.execute(
+            "SELECT pg_advisory_xact_lock(hashtextextended(%s, %s))",
+            (thread_id, _BACKFILL_KEY),
+        )
         cursor = await conn.execute(
             "DELETE FROM agent_chat_messages WHERE thread_id = %s", (thread_id,)
         )
