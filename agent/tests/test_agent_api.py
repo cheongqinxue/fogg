@@ -7,9 +7,9 @@ import os
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from master_agt.agent import get_graph, reset_graph_for_tests
+from master.agent import get_graph, reset_graph_for_tests
 from api.app import app
-from agent_utils.checkpointing import init_checkpointer, shutdown_checkpointer
+from utils.checkpointing import init_checkpointer, shutdown_checkpointer
 from layout.store import init_layout_store, shutdown_layout_store
 
 
@@ -31,6 +31,52 @@ async def api_client() -> AsyncClient:
 
 
 class TestAgentApi:
+    @pytest.mark.unit
+    def test_evaluation_sse_events_expose_only_display_contract(self) -> None:
+        from api.routes.chat_handlers import _map_astream_events
+
+        progress = _map_astream_events(
+            {
+                "event": "on_custom_event",
+                "name": "evaluation_progress",
+                "data": {
+                    "wave_id": "wave-1",
+                    "phase": "judging",
+                    "status": "started",
+                    "criteria": ["private"],
+                    "grade": "A",
+                },
+            }
+        )
+        comment = _map_astream_events(
+            {
+                "event": "on_custom_event",
+                "name": "evaluation_comment",
+                "data": {
+                    "wave_id": "wave-1",
+                    "comment": "Checking another source.",
+                    "grade": "A",
+                    "decision": "continue",
+                },
+            }
+        )
+
+        assert progress == [
+            {
+                "type": "evaluation_progress",
+                "wave_id": "wave-1",
+                "phase": "judging",
+                "status": "started",
+            }
+        ]
+        assert comment == [
+            {
+                "type": "evaluation_comment",
+                "wave_id": "wave-1",
+                "comment": "Checking another source.",
+            }
+        ]
+
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_health(self) -> None:
@@ -58,7 +104,7 @@ class TestAgentApi:
         """Optional revision query sets client_revision_matches."""
         if not (os.environ.get("AGENT_DATABASE_URL") or os.environ.get("DATABASE_URL")):
             pytest.skip("DATABASE_URL not set")
-        user_id = "api-test-head"
+        user_id = "fogg-local-user"
         first = await api_client.get(f"/v1/users/{user_id}/layout")
         assert first.status_code == 200
         revision = first.json()["revision"]

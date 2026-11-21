@@ -6,8 +6,7 @@ import argparse
 import asyncio
 import json
 
-from gmaps.quota.store import build_daily_quota_summary
-from gmaps.settings import get_usage_store
+from gmaps.quota.store import build_daily_quota_summary, get_usage_store
 
 
 async def _report(day: str | None) -> None:

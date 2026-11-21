@@ -8,18 +8,19 @@ import pytest
 from langchain.agents import create_agent
 from langchain_core.language_models.fake_chat_models import FakeListChatModel
 
-from agent_utils.checkpointing import get_checkpointer, init_checkpointer, shutdown_checkpointer
+from utils.checkpointing import get_checkpointer, init_checkpointer, shutdown_checkpointer
 
 
 class TestAgentCheckpoint:
     @pytest.mark.unit
     def test_default_database_url_when_unset(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from agent_utils.checkpointing import _database_url
+        from utils.settings import AppSettings
 
         monkeypatch.delenv("AGENT_DATABASE_URL", raising=False)
         monkeypatch.delenv("DATABASE_URL", raising=False)
         monkeypatch.setenv("COMPOSE_PORT_POSTGRES", "15432")
-        assert _database_url() == "postgresql://fogg:fogg@127.0.0.1:15432/fogg"
+        settings = AppSettings(_env_file=None)
+        assert settings.database_url == "postgresql://fogg:fogg@127.0.0.1:15432/fogg"
 
     @pytest.mark.integration
     @pytest.mark.asyncio

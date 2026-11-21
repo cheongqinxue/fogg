@@ -3,6 +3,17 @@
 from __future__ import annotations
 
 import pytest
+from collections.abc import Iterator
+
+from utils.settings import reset_settings_for_tests
+
+
+@pytest.fixture(autouse=True)
+def clear_cached_settings() -> Iterator[None]:
+    """Isolate environment-backed configuration between tests."""
+    reset_settings_for_tests()
+    yield
+    reset_settings_for_tests()
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:

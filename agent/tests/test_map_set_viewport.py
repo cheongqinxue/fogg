@@ -8,10 +8,8 @@ import uuid
 
 import pytest
 
-from layout._tool import (
-    client_command_from_tool_output,
-    execute_map_set_viewport_tool,
-)
+from layout.sse import client_command_from_tool_output
+from layout.tools import execute_map_set_viewport_tool
 from layout.store import get_or_create_thread_layout, init_layout_store, shutdown_layout_store
 
 

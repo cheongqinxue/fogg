@@ -7,8 +7,8 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.checkpoint.memory import InMemorySaver
 
-from master_agt.simulation import SimulationError, simulated_tools
-from master_agt.tools import get_tools
+from master.simulations.simulation import SimulationError, simulated_tools
+from master.tools import get_tools
 
 
 def test_original_schemas_and_local_tools_are_preserved():
@@ -18,6 +18,42 @@ def test_original_schemas_and_local_tools_are_preserved():
     assert next(t for t in patched if t.name == "map_set_viewport") is next(
         t for t in original if t.name == "map_set_viewport"
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("query", "expected_title"),
+    [
+        ("S&P 500 latest close and weekly gain or loss", "S&P 500 weekly performance"),
+        ("Where do local residents in Busan go for supper?", "Late-night pork and rice soup"),
+    ],
+)
+async def test_web_search_scenarios_are_simulated(query, expected_title):
+    tools = simulated_tools(get_tools(), delay_seconds=0)
+    search = next(tool for tool in tools if tool.name == "web_search")
+    response = json.loads(await search.ainvoke({"query": query, "priority": 1}))
+
+    assert response["provider"] == "simulation"
+    assert any(expected_title in item["title"] for item in response["results"])
+    assert all("SIMULATED TEST DATA" in item["snippet"] for item in response["results"])
+
+
+@pytest.mark.asyncio
+async def test_web_extract_scenarios_and_unknown_searches_never_call_provider():
+    extract = next(
+        tool for tool in simulated_tools(get_tools(), delay_seconds=0) if tool.name == "web_extract"
+    )
+    response = json.loads(
+        await extract.ainvoke({"url": "https://example.com/simulated/sp500-weekly", "priority": 1})
+    )
+    assert response["provider"] == "simulation"
+    assert "not live market data" in response["content"]
+
+    search = next(
+        tool for tool in simulated_tools(get_tools(), delay_seconds=0) if tool.name == "web_search"
+    )
+    with pytest.raises(SimulationError, match="No simulation matches web_search"):
+        await search.ainvoke({"query": "unrecognized search query", "priority": 1})
 
 
 @pytest.mark.asyncio
@@ -55,15 +91,21 @@ async def test_registered_scenarios_match_regex_ranges_and_locations():
     tools = simulated_tools(get_tools(), scenarios, delay_seconds=0)
     search = next(t for t in tools if t.name == "places_text_search")
     area = {"latitude": 36.65, "longitude": 138.18, "radius_meters": 1000, "mode": "restrict"}
-    first = json.loads(await search.ainvoke({"text_query": "SKI resorts", "area": area}))
-    second = json.loads(await search.ainvoke({"text_query": "Coffee", "min_rating": 4.5}))
+    first = json.loads(
+        await search.ainvoke({"text_query": "SKI resorts", "area": area, "priority": 1})
+    )
+    second = json.loads(
+        await search.ainvoke({"text_query": "Coffee", "min_rating": 4.5, "priority": 1})
+    )
     assert first["places"][0]["id"] == "first"
     assert second["places"][0]["id"] == "second"
     with pytest.raises(SimulationError, match="maximum is 20 km"):
-        await search.ainvoke({"text_query": "ski", "area": {**area, "latitude": 35.0}})
+        await search.ainvoke(
+            {"text_query": "ski", "area": {**area, "latitude": 35.0}, "priority": 1}
+        )
     place = next(t for t in tools if t.name == "places_get")
     with pytest.raises(SimulationError, match="No simulation matches"):
-        await place.ainvoke({"place_id": "anything"})
+        await place.ainvoke({"place_id": "anything", "priority": 1})
 
 
 @pytest.mark.asyncio
@@ -76,6 +118,7 @@ async def test_nearby_reports_distance_from_scenario_center():
         "longitude": 137.3625,
         "radius_meters": 5000,
         "included_types": ["ski_resort"],
+        "priority": 1,
     }
     places = json.loads(await nearby.ainvoke(args))["places"]
     assert len(places) == 3
@@ -90,7 +133,7 @@ async def test_nagano_text_search_includes_three_distinct_locations():
     search = next(
         t for t in simulated_tools(get_tools(), delay_seconds=0) if t.name == "places_text_search"
     )
-    result = json.loads(await search.ainvoke({"text_query": "ski resorts Nagano"}))
+    result = json.loads(await search.ainvoke({"text_query": "ski resorts Nagano", "priority": 1}))
     places = result["places"]
     assert len(places) == 3
     assert len({place["id"] for place in places}) == 3
@@ -102,7 +145,7 @@ async def test_nagano_text_search_includes_three_distinct_locations():
 @pytest.mark.asyncio
 @pytest.mark.parametrize("index", range(3))
 async def test_simulated_airport_routes_match_destination(index):
-    from master_agt.simulations import TEXT_SEARCH_SKI_RESORTS
+    from master.simulations.fixtures import TEXT_SEARCH_SKI_RESORTS
 
     route = next(
         t for t in simulated_tools(get_tools(), delay_seconds=0) if t.name == "routes_compute"
@@ -113,6 +156,7 @@ async def test_simulated_airport_routes_match_destination(index):
             {
                 "origin": {"address": "Matsumoto Airport"},
                 "destination": {"place_id": place["id"]},
+                "priority": 1,
             }
         )
     )
@@ -127,7 +171,11 @@ async def test_simulated_airport_routes_match_destination(index):
     assert leg["steps"][0]["navigationInstruction"]["instructions"]
     with pytest.raises(SimulationError, match="No simulation matches"):
         await route.ainvoke(
-            {"origin": {"address": "Tokyo Airport"}, "destination": {"place_id": place["id"]}}
+            {
+                "origin": {"address": "Tokyo Airport"},
+                "destination": {"place_id": place["id"]},
+                "priority": 1,
+            }
         )
 
 
@@ -141,6 +189,7 @@ async def test_simulated_airport_route_accepts_coordinates():
             {
                 "origin": {"latitude": 36.16667, "longitude": 137.92278},
                 "destination": {"latitude": 36.698, "longitude": 137.839},
+                "priority": 1,
             }
         )
     )
@@ -152,13 +201,16 @@ async def test_airport_search_result_can_be_used_as_route_origin():
     tools = simulated_tools(get_tools(), delay_seconds=0)
     search = next(tool for tool in tools if tool.name == "places_text_search")
     route = next(tool for tool in tools if tool.name == "routes_compute")
-    airport = json.loads(await search.ainvoke({"text_query": "Matsumoto Airport"}))["places"][0]
+    airport = json.loads(await search.ainvoke({"text_query": "Matsumoto Airport", "priority": 1}))[
+        "places"
+    ][0]
     assert airport["id"] == "sim-matsumoto-airport"
     result = json.loads(
         await route.ainvoke(
             {
                 "origin": {"place_id": airport["id"]},
                 "destination": {"place_id": "sim-nagano-ski-3"},
+                "priority": 1,
             }
         )
     )
@@ -167,7 +219,7 @@ async def test_airport_search_result_can_be_used_as_route_origin():
 
 @pytest.mark.asyncio
 async def test_simulated_calls_apply_async_delay_on_success_and_failure(monkeypatch):
-    from master_agt import simulation
+    from master.simulations import simulation
 
     delays = []
 
@@ -177,16 +229,16 @@ async def test_simulated_calls_apply_async_delay_on_success_and_failure(monkeypa
     monkeypatch.setattr(simulation.asyncio, "sleep", fake_sleep)
     tools = simulated_tools(get_tools())
     search = next(t for t in tools if t.name == "places_text_search")
-    await search.ainvoke({"text_query": "ski resorts Nagano"})
+    await search.ainvoke({"text_query": "ski resorts Nagano", "priority": 1})
     with pytest.raises(SimulationError):
-        await search.ainvoke({"text_query": "something unknown"})
+        await search.ainvoke({"text_query": "something unknown", "priority": 1})
     assert delays == [1.0, 1.0]
 
 
 @pytest.mark.asyncio
 async def test_dev_graph_uses_simulated_tool(monkeypatch):
-    from master_agt import agent
-    from gmaps.settings import reset_usage_store_for_tests
+    from master import agent
+    from gmaps.quota.store import reset_usage_store_for_tests
 
     class Model:
         def __init__(self):
@@ -204,7 +256,7 @@ async def test_dev_graph_uses_simulated_tool(monkeypatch):
                     tool_calls=[
                         {
                             "name": "places_text_search",
-                            "args": {"text_query": "ski resorts Nagano"},
+                            "args": {"text_query": "ski resorts Nagano", "priority": 1},
                             "id": "call-1",
                             "type": "tool_call",
                         }

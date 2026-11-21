@@ -5,7 +5,7 @@ from langchain_core.runnables import RunnableLambda
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
-from agent_utils import tracing
+from utils import tracing
 
 
 @pytest.mark.asyncio

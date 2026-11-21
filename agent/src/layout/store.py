@@ -9,7 +9,7 @@ from typing import Any
 from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
 
-from agent_utils.db import database_url
+from utils.settings import get_settings
 from layout.hashing import layout_document_hash
 from layout.models import LayoutDocument, LayoutHead
 
@@ -43,7 +43,7 @@ async def init_layout_store() -> None:
     if _POOL is not None:
         return
     _POOL = AsyncConnectionPool(
-        conninfo=database_url(),
+        conninfo=get_settings().database_url,
         min_size=1,
         max_size=5,
         open=False,

@@ -9,6 +9,7 @@ Documentation for FOGG.
 - [`dialogue-interface.md`](dialogue-interface.md) — dialogue-first UI: panels, frames, agent protocol, architecture implications
 - [`frame-journey-map.md`](frame-journey-map.md) — which frames serve which journey steps; gaps and redundancies
 - [`latency-optimization.md`](latency-optimization.md) — perceived latency, baselines, system-level perf tests
+- [`byok-security-plan.md`](byok-security-plan.md) — scoped plan for tenant isolation, customer provider-key encryption, and just-in-time use; includes local mocks and cost estimates
 - [`ideas.md`](ideas.md) — exploratory ideas and constraints not yet committed to the product roadmap
 
 ## Integrators

@@ -12,11 +12,11 @@ from tenacity import wait_fixed
 
 from benchmarks.scenarios import Scenario
 from gmaps.errors import GoogleMapsApiError
-from agent_utils.redis_client import set_async_redis_client_for_tests
+from utils.redis_client import set_async_redis_client_for_tests
 from gmaps.requests import PlacesTextSearchRequest
 from gmaps.requests.base import close_http_client, get_http_client
 from gmaps.response_cache import CACHE_KEY_PREFIX
-from gmaps.settings import reset_usage_store_for_tests
+from gmaps.quota.store import reset_usage_store_for_tests
 
 SAMPLE_PLACES_RESPONSE: dict[str, Any] = {
     "places": [{"id": "places/bench", "displayName": {"text": "Bench Cafe"}}],

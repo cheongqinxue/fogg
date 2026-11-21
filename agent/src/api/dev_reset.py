@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import os
-
 from pydantic import BaseModel, Field
 
-from agent_utils.checkpointing import get_checkpointer
+from utils.checkpointing import get_checkpointer
+from utils.settings import get_settings
 from layout.store import (
     _require_pool,
     delete_thread_layout,
@@ -35,8 +34,7 @@ class DevResetResponse(BaseModel):
 
 def dev_reset_enabled() -> bool:
     """Return whether dev reset routes are allowed."""
-    raw = os.environ.get("AGENT_DEV_RESET_ENABLED", "false").strip().lower()
-    return raw in {"1", "true", "yes", "on"}
+    return get_settings().agent_dev_reset_enabled
 
 
 async def reset_agent_state(body: DevResetRequest) -> DevResetResponse:

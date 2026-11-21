@@ -7,8 +7,8 @@ import pytest
 from redis.exceptions import ConnectionError as RedisConnectionError
 from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_fixed
 
-from agent_utils.cache.redis_cache import AsyncRedisCache
-from agent_utils.redis_client import (
+from utils.cache.redis_cache import AsyncRedisCache
+from utils.redis_client import (
     close_async_redis_clients,
     current_loop_client_count,
     get_async_redis_client,

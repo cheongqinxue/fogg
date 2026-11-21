@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
-import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from master_agt import agent as agent_module
-from agent_utils.checkpointing import get_checkpointer, init_checkpointer, shutdown_checkpointer
-from agent_utils.env import load_repo_dotenv
+from master import agent as agent_module
+from utils.checkpointing import get_checkpointer, init_checkpointer, shutdown_checkpointer
+from utils.kms import close_kms_client
+from utils.settings import get_settings
+from utils.user_tool_config import (
+    init_user_tool_config_store,
+    shutdown_user_tool_config_store,
+)
 from layout.store import init_layout_store, shutdown_layout_store
 from api.messages.store import (
     backfill_checkpoint_transcripts,
@@ -21,16 +25,15 @@ from api.messages.store import (
 from api.dev_reset import dev_reset_enabled
 from api.routes.dev import router as dev_router
 from api.routes.v1 import router as v1_router
-from agent_utils.redis_client import close_async_redis_clients
-from agent_utils.tracing import init_tracing, shutdown_tracing
-
-load_repo_dotenv()
+from utils.redis_client import close_async_redis_clients
+from utils.tracing import init_tracing, shutdown_tracing
 
 
 @asynccontextmanager
 async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
     try:
         init_tracing()
+        await init_user_tool_config_store()
         await init_layout_store()
         await init_message_store()
         await init_checkpointer()
@@ -43,6 +46,8 @@ async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
         await shutdown_checkpointer()
         await shutdown_message_store()
         await shutdown_layout_store()
+        await shutdown_user_tool_config_store()
+        await close_kms_client()
         await close_async_redis_clients()
 
 
@@ -50,10 +55,7 @@ app = FastAPI(title="Travel agent API", version="0.1.0", lifespan=_lifespan)
 
 
 def _cors_origins() -> list[str]:
-    raw = os.environ.get("CORS_ORIGINS", "*").strip()
-    if raw == "*":
-        return ["*"]
-    return [o.strip() for o in raw.split(",") if o.strip()]
+    return get_settings().cors_origins
 
 
 app.add_middleware(

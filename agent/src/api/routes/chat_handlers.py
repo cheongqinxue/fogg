@@ -11,11 +11,11 @@ from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.messages.base import message_to_dict, messages_to_dict
 from pydantic import BaseModel, Field
 
-from master_agt.agent import get_graph
-from layout import client_command_from_tool_output
+from master.agent import get_graph
+from layout.sse import client_command_from_tool_output
 from layout.client_context import ClientContextPayload
 from layout.store import get_layout_head, get_or_create_thread_layout
-from agent_utils.request_context import request_user_id
+from utils.request_context import request_user_id
 from api.routes.chat_messages import build_turn_messages
 from api.messages.store import append_message
 
@@ -96,6 +96,37 @@ def _map_astream_events(raw_event: dict[str, Any]) -> list[dict[str, Any]]:
     name = raw_event.get("name")
     run_id = raw_event.get("run_id")
     run_id_str = str(run_id) if run_id is not None else None
+
+    if kind == "on_custom_event" and isinstance(data, dict):
+        if name == "evaluation_progress":
+            wave_id = data.get("wave_id")
+            phase = data.get("phase")
+            status = data.get("status")
+            if (
+                isinstance(wave_id, str)
+                and phase in {"criteria_generation", "judging"}
+                and status in {"started", "completed", "failed"}
+            ):
+                return [
+                    {
+                        "type": "evaluation_progress",
+                        "wave_id": wave_id,
+                        "phase": phase,
+                        "status": status,
+                    }
+                ]
+        if name == "evaluation_comment":
+            wave_id = data.get("wave_id")
+            comment = data.get("comment")
+            if isinstance(wave_id, str) and isinstance(comment, str) and comment.strip():
+                return [
+                    {
+                        "type": "evaluation_comment",
+                        "wave_id": wave_id,
+                        "comment": comment.strip()[:500],
+                    }
+                ]
+        return []
 
     if kind == "on_tool_start":
         return [

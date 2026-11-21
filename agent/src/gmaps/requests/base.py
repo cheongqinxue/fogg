@@ -16,12 +16,14 @@ from tenacity import AsyncRetrying, retry_if_exception, stop_after_attempt, wait
 
 from gmaps.errors import GmapsQuotaExceededError, GoogleMapsApiError
 from gmaps.quota.caps import SKU_FREE_CAP
-from gmaps.quota.store import UsageStore, current_day, current_period
+from gmaps.quota.store import UsageStore, current_day, current_period, get_usage_store
 from gmaps.quota.types import BillableEvent
 from gmaps.requests.quota_balance import QuotaBalance
 from gmaps.requests.sku import BillableSKU
 from gmaps.response_cache import get_cached_response, set_cached_response
-from gmaps.settings import GmapsSettings, get_settings, get_usage_store
+from utils.settings import AppSettings, get_settings
+from utils.request_context import request_user_id
+from utils.user_tool_config import get_user_api_key
 
 logger = logging.getLogger(__name__)
 
@@ -210,7 +212,7 @@ class GoogleMapRequest(BaseModel, ABC, Generic[TResponse]):
         self,
         store: UsageStore,
         events: list[BillableEvent],
-        settings: GmapsSettings,
+        settings: AppSettings,
         new_totals: dict[str, int],
         period: str,
     ) -> None:
@@ -276,9 +278,9 @@ class GoogleMapRequest(BaseModel, ABC, Generic[TResponse]):
             return f"HTTP {response.status_code} from Google Maps"
         return f"Google Maps request failed: {type(exc).__name__}: {exc}"
 
-    def _api_key_header(self) -> dict[str, str]:
-        settings = get_settings()
-        if not settings.google_maps_api_key:
-            msg = "GOOGLE_MAPS_API_KEY is not set"
+    async def _api_key_header(self) -> dict[str, str]:
+        api_key = await get_user_api_key(request_user_id.get(), "google_maps")
+        if not api_key:
+            msg = "Google Maps API key is not configured for this user"
             raise RuntimeError(msg)
-        return {"X-Goog-Api-Key": settings.google_maps_api_key}
+        return {"X-Goog-Api-Key": api_key}

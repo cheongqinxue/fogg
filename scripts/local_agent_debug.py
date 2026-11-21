@@ -1,15 +1,12 @@
 import json
 import logging
-import os
 from collections.abc import Iterator
 
 import httpx
 from httpx import Timeout
 
 import sseclient
-from dotenv import load_dotenv
-
-load_dotenv()
+from utils.settings import get_settings
 
 DEFAULT_USER = "default_01"
 
@@ -60,7 +57,7 @@ def stream_one_turn(client: httpx.Client, query: str):
 
 def main():
     with httpx.Client(
-        base_url=os.environ["AGENT_API_BASE_URL"], timeout=Timeout(30, connect=5, read=20)
+        base_url=get_settings().agent_api_base_url, timeout=Timeout(30, connect=5, read=20)
     ) as client:
         response = client.get(f"/v1/users/{DEFAULT_USER}/messages")
         messages = response.json()["messages"]

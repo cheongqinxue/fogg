@@ -4,7 +4,7 @@ Read this file first for repo layout, entrypoints, and where human-facing docs l
 
 **Last updated:** 2026-11-15
 
-**Last Python review:** 2026-11-09 — agent `master_agt/` layout store, thread routes, chat/SSE, Postgres checkpoints.
+**Last Python review:** 2026-11-09 — agent `master/` layout store, thread routes, chat/SSE, Postgres checkpoints.
 
 ## What this repo is
 
@@ -12,7 +12,7 @@ FOGG is a travel-agent project.
 
 | Area | Path | Status |
 |------|------|--------|
-| **Functionality modules** | `agent/src/gmaps/`, `agent/src/layout/` | Google Maps client and layout functionality used by the agent |
+| **Functionality modules** | `agent/src/gmaps/`, `agent/src/layout/`, `agent/src/web_search_tool/` | Google Maps, layout, and multi-provider web search functionality used by the agent |
 | **Backend API stub** | `backend/server.py` | Minimal FastAPI health/readiness service for Docker Compose; not the production API |
 | **Frontend** | `frontend/svelte/` | SvelteKit browser app for phone and desktop web; chat/SSE, local layout sync, and OSM map — see [`frontend/svelte/README.md`](frontend/svelte/README.md) |
 | **Agent** | `agent/` | LangGraph ReAct harness — see [`agent/README.md`](agent/README.md) |
@@ -114,20 +114,21 @@ Use **Postman** (Google Maps Platform workspace) for API exploration — not che
 
 ## Agents directory
 
-[`agent/`](agent/README.md) — LangGraph ReAct harness (`master_agt` package at `agent/src/master_agt/`). From **repo root**: `uv sync`; optional `cp agent/.env-template agent/.env`; `uv run uvicorn api.app:app` (or `./scripts/run-agent-debug.sh`). API contract: [`docs/agent-api.md`](docs/agent-api.md). Package map (under `agent/src/master_agt/`):
+[`agent/`](agent/README.md) — LangGraph ReAct harness (`master` package at `agent/src/master/`). From **repo root**: `uv sync`; optional `cp agent/.env-template agent/.env`; `uv run uvicorn api.app:app` (or `./scripts/run-agent-debug.sh`). API contract: [`docs/agent-api.md`](docs/agent-api.md). Package map (under `agent/src/master/`):
 
 | Module | Role |
 |--------|------|
-| `master_agt/routes/` | `/v1` health and user-scoped chat, SSE, messages, layout, and user-actions; `chat_handlers.py` and `chat_messages.py` split chat orchestration/history routes |
-| `master_agt/agent.py`, `master_agt/graph_utils/` | `create_agent` + lazy `get_graph()`; graph state, nodes, and tools |
-| `agent_utils/` | Shared database URL, environment loading, and request-scoped context helpers |
+| `master/routes/` | `/v1` health and user-scoped chat, SSE, messages, layout, and user-actions; `chat_handlers.py` and `chat_messages.py` split chat orchestration/history routes |
+| `master/agent.py`, `master/graph_utils/` | `create_agent` + lazy `get_graph()`; graph state, nodes, and tools |
+| `utils/` | Shared database URL, environment loading, and request-scoped context helpers |
 | `layout/` | Independent layout store, sync, and map viewport functionality |
 | `gmaps/` | Google Maps client package (import name: `gmaps`) |
+| `web_search_tool/` | Tavily, Exa, and Firecrawl adapters behind the `web_search` and `web_extract` tools |
 | `api/app.py`, `api/main.py`, `api/routes/`, `api/messages/` | FastAPI service/lifespan, Uvicorn entrypoints, HTTP routes, and transcript endpoint handling |
 | `api/dev_reset.py` | Development-only data reset behavior |
-| `master_agt/layout/` | Postgres layout rows, models, hashing/sync rules, client context, user actions, and `map_set_viewport` tool implementation (`_tool.py`) |
-| `master_agt/messages/history.py` | Checkpoint-backed transcript history for the client |
-| `agent_utils/checkpointing.py` | `AsyncPostgresSaver` checkpointer |
+| `master/layout/` | Postgres layout rows, models, hashing/sync rules, client context, user actions, and `map_set_viewport` tool implementation (`_tool.py`) |
+| `master/messages/history.py` | Checkpoint-backed transcript history for the client |
+| `utils/checkpointing.py` | `AsyncPostgresSaver` checkpointer |
 
 LangGraph Studio: `cd agent && uv run langgraph dev` (needs Postgres URL like uvicorn).
 
@@ -136,7 +137,17 @@ LangGraph Studio: `cd agent && uv run langgraph dev` (needs Postgres URL like uv
 Both `full` and `debug-agent` profiles include local Phoenix tracing, available at
 `http://127.0.0.1:16006` by default (`COMPOSE_PORT_PHOENIX`). Trace data persists
 in the `phoenix_data` volume. The agent exports LangGraph spans using
-`agent_utils/tracing.py`; see the [agent README](agent/README.md#local-phoenix-traces)
+`utils/tracing.py`; see the [agent README](agent/README.md#local-phoenix-traces)
 for settings and how to disable tracing.
 
 From **repo root**: `./scripts/compose-up.sh full --build` (or **`debug-agent`** + **`scripts/run-agent-debug.sh`** for host agent with reload; **`--list-profiles`**). **Ollama** uses **`gpus: all`** (needs [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html); see [`deploy/README.md`](deploy/README.md)) — comment that line out for CPU-only. Published host ports default to **16379** (redis), **15432** (postgres), **11434** (Ollama), **18080** (agent), **18000** (backend stub) — override with `COMPOSE_PORT_*` in [`.env`](deploy/compose.env.example). The Svelte dev server reads **`FRONTEND_WEB_PORT_DEBUG`** and **`AGENT_API_BASE_URL`** from root **`.env`**. The stack includes **Ollama**; the agent container gets **`COMPOSE_AGENT_OPENAI_BASE_URL`** (default **`http://ollama:11434/v1`**) mapped to **`OPENAI_BASE_URL`**, so host **`.env`** `OPENAI_BASE_URL` does not break Docker. For host-only Ollama: `COMPOSE_AGENT_OPENAI_BASE_URL=http://host.docker.internal:11434/v1`. Local agent (no Docker): `127.0.0.1:11434`.
+
+
+### Python package conventions
+
+- Name files by their role inside the owning package: use `gmaps/tools.py`, `layout/tools.py`, and `layout/sse.py`. The package path already identifies the module, so do not repeat the package name in filenames. Agent packages may use `tools.py` to assemble functionality-module tools and define agent-specific tools.
+- Keep each functionality tool's Pydantic input schema beside its function in that module's `tools.py`. Name schemas `<ToolFunctionPascalCase>Input`. Put shared tool base classes and serialization helpers in `utils/`.
+- Keep provider selection behind the agent-facing tool schema. Search provider adapters return normalized results and must not expose provider-specific inputs to the model.
+- Keep SSE formatting and handling in `<package>/sse.py` when a functionality package needs it.
+- Keep imports flowing from shared utilities or laterally between functionality modules; do not make functionality modules depend on agent packages.
+- Package `__init__.py` files only re-export public names through `__all__`; keep implementation and other logic in regular modules.

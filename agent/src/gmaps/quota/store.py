@@ -305,8 +305,8 @@ class RedisUsageStore:
         if redis_client is not None:
             self._redis = redis_client
         else:
-            from agent_utils.redis_client import get_async_redis_client
-            from gmaps.settings import get_settings
+            from utils.redis_client import get_async_redis_client
+            from utils.settings import get_settings
 
             self._redis = get_async_redis_client(get_settings().redis_url)
         self._lua_supported: bool | None = None
@@ -573,3 +573,32 @@ async def build_daily_quota_summary(store: UsageStore, day: str | None = None) -
         "skus": rows,
         "note": "Local request attempts through gmaps; compare by SKU and billable unit.",
     }
+
+
+_usage_store: UsageStore | None = None
+
+
+def get_usage_store() -> UsageStore:
+    """Return the configured singleton store for Google Maps usage counters."""
+    global _usage_store
+    if _usage_store is not None:
+        return _usage_store
+
+    from utils.settings import get_settings
+
+    settings = get_settings()
+    if settings.gmaps_quota_store == "sqlite":
+        _usage_store = SqliteUsageStore(settings.gmaps_quota_sqlite_path)
+    else:
+        _usage_store = RedisUsageStore()
+    return _usage_store
+
+
+def reset_usage_store_for_tests() -> None:
+    """Reset usage-store and central-settings caches between tests."""
+    global _usage_store
+    _usage_store = None
+
+    from utils.settings import reset_settings_for_tests
+
+    reset_settings_for_tests()

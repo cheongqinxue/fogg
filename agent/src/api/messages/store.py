@@ -11,7 +11,7 @@ from typing import Any
 from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
 
-from agent_utils.db import database_url
+from utils.settings import get_settings
 
 logger = logging.getLogger(__name__)
 PAGE_SIZE = 50
@@ -48,7 +48,7 @@ async def init_message_store() -> None:
     if _POOL is not None:
         return
     pool = AsyncConnectionPool(
-        conninfo=database_url(),
+        conninfo=get_settings().database_url,
         min_size=1,
         max_size=5,
         open=False,

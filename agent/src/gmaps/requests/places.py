@@ -89,8 +89,8 @@ class PlacesTextSearchRequest(GoogleMapRequest[dict[str, Any]]):
             exclude_none=True,
         )
 
-    def _headers(self) -> dict[str, str]:
-        headers = self._api_key_header()
+    async def _headers(self) -> dict[str, str]:
+        headers = await self._api_key_header()
         headers["X-Goog-FieldMask"] = self.field_mask
         headers["Content-Type"] = "application/json"
         return headers
@@ -99,7 +99,7 @@ class PlacesTextSearchRequest(GoogleMapRequest[dict[str, Any]]):
         return await get_http_client().post(
             f"{PLACES_BASE}/v1/places:searchText",
             json=self._body(),
-            headers=self._headers(),
+            headers=await self._headers(),
         )
 
 
@@ -144,8 +144,8 @@ class PlacesSearchNearbyRequest(GoogleMapRequest[dict[str, Any]]):
     def _body(self) -> dict[str, object]:
         return self.model_dump(by_alias=True, exclude={"field_mask"}, exclude_none=True)
 
-    def _headers(self) -> dict[str, str]:
-        headers = self._api_key_header()
+    async def _headers(self) -> dict[str, str]:
+        headers = await self._api_key_header()
         headers["X-Goog-FieldMask"] = self.field_mask
         headers["Content-Type"] = "application/json"
         return headers
@@ -154,7 +154,7 @@ class PlacesSearchNearbyRequest(GoogleMapRequest[dict[str, Any]]):
         return await get_http_client().post(
             f"{PLACES_BASE}/v1/places:searchNearby",
             json=self._body(),
-            headers=self._headers(),
+            headers=await self._headers(),
         )
 
 
@@ -185,8 +185,8 @@ class PlacesAutocompleteRequest(GoogleMapRequest[dict[str, Any]]):
     def _body(self) -> dict[str, object]:
         return self.model_dump(by_alias=True, exclude={"field_mask"}, exclude_none=True)
 
-    def _headers(self) -> dict[str, str]:
-        headers = self._api_key_header()
+    async def _headers(self) -> dict[str, str]:
+        headers = await self._api_key_header()
         headers["X-Goog-FieldMask"] = self.field_mask
         headers["Content-Type"] = "application/json"
         return headers
@@ -195,7 +195,7 @@ class PlacesAutocompleteRequest(GoogleMapRequest[dict[str, Any]]):
         return await get_http_client().post(
             f"{PLACES_BASE}/v1/places:autocomplete",
             json=self._body(),
-            headers=self._headers(),
+            headers=await self._headers(),
         )
 
 
@@ -220,13 +220,13 @@ class PlacesGetRequest(GoogleMapRequest[dict[str, Any]]):
             {},
         )
 
-    def _headers(self) -> dict[str, str]:
-        headers = self._api_key_header()
+    async def _headers(self) -> dict[str, str]:
+        headers = await self._api_key_header()
         headers["X-Goog-FieldMask"] = self.field_mask
         return headers
 
     async def _do_http(self) -> httpx.Response:
         return await get_http_client().get(
             f"{PLACES_BASE}/v1/places/{self.place_id}",
-            headers=self._headers(),
+            headers=await self._headers(),
         )

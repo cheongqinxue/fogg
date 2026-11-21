@@ -1,8 +1,8 @@
 # LangGraph ReAct agent (this repo)
 
-[LangGraph application layout](https://docs.langchain.com/oss/python/langgraph/application-structure): Python package **`master_agt/`** at **`agent/src/master_agt/`**, **`langgraph.json`** in **`agent/`**, Bruno under **`agent/bruno/`**.
+[LangGraph application layout](https://docs.langchain.com/oss/python/langgraph/application-structure): Python package **`master/`** at **`agent/src/master/`**, **`langgraph.json`** in **`agent/`**, Bruno under **`agent/bruno/`**.
 
-The **`graph`** package is included in the **repository root** `uv` project (`pyproject.toml` hatch sources map `agent/src/master_agt` → import name `master_agt`). Use **one venv at repo root** — no separate `agent/pyproject.toml`.
+The **`graph`** package is included in the **repository root** `uv` project (`pyproject.toml` hatch sources map `agent/src/master` → import name `master`). Use **one venv at repo root** — no separate `agent/pyproject.toml`.
 
 Model backend: **OpenAI-compatible API** via **`ChatOpenAI`**. Defaults: **Ollama** + **LFM3 1.7B** (`lfm3:1.7b`). Same code path works for **vLLM** / **SGLang** — change **`OPENAI_BASE_URL`** and **`AGENT_MODEL`**.
 
@@ -68,7 +68,7 @@ uv run langgraph dev
 ## Invoke in Python
 
 ```python
-from master_agt.agent import graph  # lazy singleton
+from master.agent import graph  # lazy singleton
 
 result = graph.invoke(
     {"messages": [("user", "Say hello and use echo_destination for Paris.")]}
@@ -90,6 +90,25 @@ Use `graph.astream()` or `graph.astream_events()` on the compiled graph (see Lan
 | `CORS_ORIGINS` | FastAPI CORS: `*` or comma-separated origins |
 | `AGENT_INTERNAL_PORT` | Uvicorn listen port when run locally (match `AGENT_API_BASE_URL`) |
 
+## Web search providers
+
+The master agent exposes one `web_search` tool and one `web_extract` tool. Provider
+selection is internal: configured providers are tried in `WEB_SEARCH_PROVIDER_ORDER`
+and search stops at the first provider that returns results. Missing keys are skipped.
+Supported adapters are Tavily, Exa, and Firecrawl. Set the corresponding
+`TAVILY_API_KEY`, `EXA_API_KEY`, and `FIRECRAWL_API_KEY` values when ready. Each
+search result is normalized to title, URL, and snippet while retaining its source
+provider. Search and extraction results use the shared async Redis cache when
+`WEB_SEARCH_CACHE_ENABLED=true` (default), with a one-hour TTL by default. Redis
+outages are treated as cache misses, and cache-write failures do not fail or delay a
+successful provider response. Extraction uses the same provider order and caps
+returned content at 20,000 characters.
+
+Brave is not enabled as an adapter yet: its API documentation currently prohibits
+retaining API data, while this app persists tool messages in checkpoints and captures
+tool I/O for debugging. We need to resolve that retention conflict before routing
+requests through Brave.
+
 ## Layout
 
 ```
@@ -97,25 +116,31 @@ agent/
 ├── bruno/FOGG-Agent/
 ├── langgraph.json
 └── src/
-    ├── master_agt/       # LangGraph harness, graph state/tools, checkpoint integration
+    ├── master/       # LangGraph harness, graph state/tools, checkpoint integration
     ├── api/         # FastAPI app, routes, transcript endpoints, dev reset
     ├── layout/      # independent layout functionality (store, sync, map tool)
     ├── gmaps/       # Google Maps client functionality; import name remains gmaps
-    └── agent_utils/ # shared DB, environment, and request-context helpers
+    ├── web_search_tool/ # provider adapters and web_search/web_extract tools
+    └── utils/ # shared DB, environment, and request-context helpers
 ```
 
-Agent, layout, and Maps client tests live in **`agent/tests/`** (imports include `master_agt.*`, `api.*`, `layout.*`, and `gmaps.*`).
+Agent, layout, and Maps client tests live in **`agent/tests/`** (imports include `master.*`, `api.*`, `layout.*`, and `gmaps.*`).
 
 # Simulated agent scenario
 
-With `FOGG_ENV=dev`, the agent replaces Google Maps tools with simulations.
-All entries in `master_agt/simulations/__init__.py` are available simultaneously.
+With `FOGG_ENV=dev`, the agent replaces Google Maps and web provider tools
+(`web_search`, `web_extract`) with simulations. The local LFM judge still runs
+normally; only external provider calls are intercepted.
+All entries in `master/simulations/__init__.py` are available simultaneously.
 Each case maps expected argument values to a response. Expectations support
 regular expressions, nested dictionaries, inclusive numeric ranges, and a
 geographic center with a maximum distance. Unmatched calls return a tool error;
 they never reach Google. Original tool schemas and validation are preserved.
-The Nagano resort fixtures are fictional. Local tools such as map viewport
-remain active. Restart the agent after changing the environment or scenarios.
+The Nagano resort fixtures are fictional. The S&P 500 and Busan web-search
+fixtures are also simulated, and their outputs are labeled as test data. An
+unmatched search or extraction raises `SimulationError` rather than falling
+through to a live provider. Local tools such as map viewport remain active.
+Restart the agent after changing the environment or scenarios.
 Simulated external tool calls wait asynchronously for one second, including
 unmatched calls. Tests or custom graphs can override this with the
 `delay_seconds` argument to `simulated_tools`.
@@ -133,6 +158,22 @@ fixed masks for route, leg, and step details, geometry, and matrix status; route
 optimization additionally requests the optimized waypoint order. Route request
 features such as traffic awareness and waypoint optimization can select a
 higher billing tier even with these fixed masks.
+
+Every agent-facing tool schema requires a positive integer `priority`; `1` is
+highest priority. When the model requests multiple tools in one response, each
+call must use a unique value. The master tool node rejects missing or duplicate
+priorities with feedback for the model, then executes valid calls in ascending
+priority order. For physical-place discovery, the system prompt prioritizes
+Google Places tools over web research.
+
+`places_text_search`, `places_search_nearby`, and `web_search` form the limited
+concurrency group. `AGENT_LIMITED_TOOL_MAX_CONCURRENCY` controls its wave size
+(default `1`). If a batch exceeds that limit, the local LFM generates evaluation
+criteria alongside the first tool wave, then judges the completed results. A
+grade A stops queued calls; otherwise the judge chooses whether to continue or
+ask the master to replan. Judge failures preserve results and allow queued calls
+to proceed. `AGENT_TOOL_JUDGE_MAX_ATTEMPTS` controls attempts per judge operation
+(default `3`).
 
 The model input budget defaults to an estimated 20,000 tokens, leaving room in
 the default 32,768-token Ollama context for tool schemas and generation. Set

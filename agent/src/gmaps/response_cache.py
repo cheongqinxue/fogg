@@ -7,8 +7,8 @@ import json
 import logging
 from typing import Any
 
-from agent_utils.cache.redis_cache import AsyncRedisCache
-from gmaps.settings import get_settings
+from utils.cache.redis_cache import AsyncRedisCache
+from utils.settings import get_settings
 
 logger = logging.getLogger(__name__)
 

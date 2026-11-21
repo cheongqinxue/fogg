@@ -9,6 +9,10 @@ FastAPI app: `api.app` (package `api/` under [`agent/src/api/`](../agent/src/api
 
 The Svelte browser client uses `AGENT_API_BASE_URL` (scheme + host + port **without** `/v1`). Bruno collection: [`agent/bruno/FOGG-Agent`](../agent/bruno/FOGG-Agent).
 
+### Identity
+
+All `/v1/users/{user_id}/…` routes and `/v1/tools/…` configuration routes resolve the caller through `Authorization: Bearer <ID token>`. The API verifies the token with `verify_identity_token()` and uses the verified UID for checkpoints, layout, transcript history, and tool configuration. The path `user_id` must match that UID; it is not accepted as proof of identity. In local identity mode, the verifier returns the fixed UID `fogg-local-user` and permits requests without a bearer token. Google identity mode requires a valid Identity Platform ID token.
+
 ### Implementation tracker
 
 Each row is one deliverable. Check **Agent** when the FastAPI / LangGraph side lands; check **UI** when the browser client handles it. Use `[x]` when done.
@@ -16,6 +20,7 @@ Each row is one deliverable. Check **Agent** when the FastAPI / LangGraph side l
 | Item | Agent | UI |
 |------|:-----:|:---:|
 | `GET /v1/health` | [x] | [ ] |
+| `GET /v1/tools/status` (tool configuration readiness) | [x] | [x] |
 | LangGraph **checkpoint** (path `user_id` → `configurable.thread_id`; Postgres) | [x] | [ ] |
 | `POST /v1/users/{user_id}/chat/stream` — `assistant_delta`, `assistant_done` (basic) | [x] | [x] |
 | `POST /v1/users/{user_id}/chat/stream` — `tool_call_start` / `tool_call_end` | [x] | [x] |
@@ -51,6 +56,9 @@ The **browser client must not** call backend services directly (Google Maps, tri
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/v1/health` | Liveness |
+| `GET` | `/v1/tools/status` | Registered tools and required API-key configuration |
+| `PUT` | `/v1/tools/{tool_name}/active` | Enable or disable a tool for the authenticated user |
+| `PUT` | `/v1/tools/credentials` | Save or replace encrypted provider API keys for the authenticated user |
 | `POST` | `/v1/users/{user_id}/chat` | One full agent turn (blocking) |
 | `POST` | `/v1/users/{user_id}/chat/stream` | Same turn, **Server-Sent Events** |
 | `POST` | `/v1/users/{user_id}/layout/sync` | Layout reconcile (user/agent deltas or full config) — [ ] Agent · [x] UI |
@@ -58,11 +66,34 @@ The **browser client must not** call backend services directly (Google Maps, tri
 | `GET` | `/v1/users/{user_id}/layout` | Optional lightweight revision / hash check — [ ] Agent · [x] UI |
 | `GET` | `/v1/users/{user_id}/messages` | User/assistant transcript for UI restore — [x] Agent · [x] UI |
 
+### Tool readiness
+
+`GET /v1/tools/status` requires the normal bearer authentication and returns `api_server: "ready"` and one row for every registered agent tool. Each row includes its name, description, `active` state, `status`, setup message, and provider credential fields with configured flags. `status` is `"ready"` when required configuration is present, or `"needs_configuration"`. Readiness and activation are separate: users cannot enable a tool until it is ready. Local tools default active; key-backed tools default inactive unless a server environment key already configures them. A saved user key makes the tool ready but leaves it inactive until enabled.
+
+Google Maps tools share one `google_maps` key. Both web tools share the configured Tavily, Exa, and Firecrawl provider keys. Credentials are scoped to the verified UID, encrypted with the shared KMS helper before Postgres storage, and decrypted only at tool invocation. Saving a provider key again replaces the previous key. Keys are never returned by the API.
+
+Save or replace one or more provider keys with `PUT /v1/tools/credentials`:
+
+```json
+{
+  "credentials": {
+    "google_maps": "<google-maps-key>",
+    "tavily": "<tavily-key>"
+  }
+}
+```
+
+The accepted provider names are `google_maps`, `tavily`, `exa`, and `firecrawl`. The response contains only the provider names saved. Enable or disable a tool with `PUT /v1/tools/{tool_name}/active` and body `{"active": true}` or `{"active": false}`. Enabling a tool whose required credentials are missing returns HTTP `409`.
+
+The status endpoint checks configuration only; it does not make billable provider calls or confirm that a provider is currently reachable. `map_set_viewport` and `echo_destination` do not require provider keys.
+
+If the API server cannot be reached, the status endpoint cannot return a response. The UI should show server unavailability from the failed request/network state; it should not infer that every individual tool is misconfigured.
+
 ### Thread persistence (LangGraph checkpointer)
 
 **Track:** [x] Agent chat history · [x] map observations · [x] layout store
 
-Each `POST /v1/users/{user_id}/chat` or `/v1/users/{user_id}/chat/stream` turn uses the path **`user_id`** as the LangGraph config key (`configurable.thread_id`, same string value). The compiled ReAct graph uses **`AsyncPostgresSaver`** so message state is **loaded and extended** per thread instead of starting empty every request.
+Each `POST /v1/users/{user_id}/chat` or `/v1/users/{user_id}/chat/stream` turn uses the **verified UID** as the LangGraph config key (`configurable.thread_id`). The path value must match the verified UID. The compiled ReAct graph uses **`AsyncPostgresSaver`** so message state is **loaded and extended** per thread instead of starting empty every request.
 
 Set **`AGENT_DATABASE_URL`** or **`DATABASE_URL`** (same Postgres as the backend stub in compose). Checkpoint tables are created on startup via `checkpointer.setup()`. FastAPI **`lifespan`** in `api.app` calls `init_checkpointer()` before the graph singleton is built — run the agent via **`uvicorn api.app:app`**, not a bare graph import, so Postgres is wired.
 
@@ -121,7 +152,7 @@ Clients store `revision` + `layout_hash` with the cached document. On desync, th
 | **Agent should focus map** | — | Model calls tool **`map_set_viewport`** | Tool may update server layout when command is accepted |
 | **Agent commands UI** | Apply **`client_command`** | Only emitted when **`map_set_viewport`** runs | Confirm with **`layout/sync`** `applied` |
 
-**Adjudication:** Whether to move the map after a user pan is **not** a hard server merge rule. The model reads **when** the user moved, **where** they looked, and **what** was said in chat, then **chooses** to call **`map_set_viewport`** or not. Policy text lives in **`SYSTEM_PROMPT`** in [`agent/src/master_agt/agent.py`](../agent/src/master_agt/agent.py) (focus inference, when to call the tool vs stay silent). Optional server guard: do not emit `client_command` if the tool’s target viewport is unchanged or invalid.
+**Adjudication:** Whether to move the map after a user pan is **not** a hard server merge rule. The model reads **when** the user moved, **where** they looked, and **what** was said in chat, then **chooses** to call **`map_set_viewport`** or not. Policy text lives in **`SYSTEM_PROMPT`** in [`agent/src/master/agent.py`](../agent/src/master/agent.py) (focus inference, when to call the tool vs stay silent). Optional server guard: do not emit `client_command` if the tool’s target viewport is unchanged or invalid.
 
 **`layout/sync`:** Still used for **`applied`** acks after `client_command`, **`sync_mode: full`** on desync, and (today) throttled **`proposed_delta`** until **`user-actions`** is implemented on the client. Long term: pan → **`user-actions`**; keep **`layout/sync`** for agent confirmations and realign.
 
@@ -414,6 +445,7 @@ Clients should parse each `data:` line as JSON and branch on **`type`**.
 |--------|----------------|------|
 | **Assistant** | `assistant_delta`, `assistant_done` | Chat transcript |
 | **Tool** | `tool_call_start`, `tool_call_end` | Agent runtime observability |
+| **Tool evaluation** | `evaluation_progress`, `evaluation_comment` | Limited-search progress and short judge comment |
 | **Client** | `client_command` — [x] Agent · [x] UI | **Agent-initiated** UI ops from **`map_set_viewport` only**; apply + `layout/sync` `applied` |
 
 Assistant and tool events are for **reading** and **debugging**. **`client_command`** is for **agent-requested** map moves only. Do not infer UI commands from `tool_call_end.output` alone. User pans are **`user-actions`**, not SSE.
@@ -424,6 +456,8 @@ Assistant and tool events are for **reading** and **debugging**. **`client_comma
 |--------|------|------------|
 | `tool_call_start` | Tool execution started | Show “running tool …” |
 | `tool_call_end` | Tool finished | Debug / optional status |
+| `evaluation_progress` | Criteria generation or evaluation starts, completes, or fails | Show progress only; failed phases clear silently |
+| `evaluation_comment` | A search-results wave has been evaluated | Show only the comment briefly; never display criteria, grade, or internal action |
 | `client_command` — [x] Agent · [x] UI | **`map_set_viewport` tool** accepted | Apply on client → `layout/sync` `applied` |
 | `assistant_delta` — [x] Agent · [x] UI | Model streamed text token(s) | Append `delta` to assistant bubble |
 | `assistant_done` — [x] Agent · [x] UI | Graph finished this user turn | Stop loading; optional layout resync |
@@ -505,6 +539,34 @@ Future commands reuse the same envelope (`map.show_route`, `ui.show_toast`, `wor
 | `output` | string | Tool return value (message content) |
 | `tool_call_id` | string \| null | Model tool call id when available |
 | `run_id` | string \| null | Same correlation id as start |
+
+### `evaluation_progress` and `evaluation_comment`
+
+These events are emitted only when a batch contains more limited-concurrency tool calls
+than the configured limit. `evaluation_progress` tracks criteria generation (concurrent
+with the first tool wave) and judging (after a wave completes). `wave_id` correlates phases
+and comments for each wave. Failed phases preserve tool results and fail open to the next
+queued tool call.
+
+The limited group is `places_text_search`, `places_search_nearby`, and `web_search`.
+`AGENT_LIMITED_TOOL_MAX_CONCURRENCY` controls how many of these run in one wave (default
+`1`). Tool-call priorities are positive, unique within a model response, and execute in
+ascending order. For an overflowing batch, the local configured chat model creates criteria
+once, then grades results after each wave. Grade A stops the queue; otherwise the judge
+chooses whether to continue through queued calls or return feedback asking the master to
+replan. Criteria-generation or evaluation failures preserve completed results and fail open
+to queued calls. `AGENT_TOOL_JUDGE_MAX_ATTEMPTS` defaults to three attempts per judge
+operation.
+
+```json
+{"type":"evaluation_progress","wave_id":"wave-1","phase":"criteria_generation","status":"started"}
+{"type":"evaluation_progress","wave_id":"wave-1","phase":"judging","status":"started"}
+{"type":"evaluation_comment","wave_id":"wave-1","comment":"The search found options, but their private bath arrangements still need confirmation."}
+```
+
+The browser displays only the short, display-safe `comment`, then fades it after two
+seconds. Criteria, grades, continue/replan actions, internal rationale, and raw judge errors
+are not part of the UI event payload.
 
 ### `assistant_delta`
 

@@ -79,8 +79,8 @@ class RoutesComputeRoutesRequest(GoogleMapRequest[dict[str, Any]]):
     def _body(self) -> dict[str, object]:
         return self.model_dump(by_alias=True, exclude={"field_mask"}, exclude_none=True)
 
-    def _headers(self) -> dict[str, str]:
-        headers = self._api_key_header()
+    async def _headers(self) -> dict[str, str]:
+        headers = await self._api_key_header()
         headers["X-Goog-FieldMask"] = self.field_mask
         headers["Content-Type"] = "application/json"
         return headers
@@ -89,7 +89,7 @@ class RoutesComputeRoutesRequest(GoogleMapRequest[dict[str, Any]]):
         return await get_http_client().post(
             f"{ROUTES_BASE}/directions/v2:computeRoutes",
             json=self._body(),
-            headers=self._headers(),
+            headers=await self._headers(),
         )
 
 
@@ -125,8 +125,8 @@ class RoutesComputeRouteMatrixRequest(GoogleMapRequest[dict[str, Any]]):
     def _body(self) -> dict[str, object]:
         return self.model_dump(by_alias=True, exclude={"field_mask"}, exclude_none=True)
 
-    def _headers(self) -> dict[str, str]:
-        headers = self._api_key_header()
+    async def _headers(self) -> dict[str, str]:
+        headers = await self._api_key_header()
         headers["X-Goog-FieldMask"] = self.field_mask
         headers["Content-Type"] = "application/json"
         return headers
@@ -135,5 +135,5 @@ class RoutesComputeRouteMatrixRequest(GoogleMapRequest[dict[str, Any]]):
         return await get_http_client().post(
             f"{ROUTES_BASE}/distanceMatrix/v2:computeRouteMatrix",
             json=self._body(),
-            headers=self._headers(),
+            headers=await self._headers(),
         )

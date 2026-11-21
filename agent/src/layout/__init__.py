@@ -1,5 +1,5 @@
-"""Per-thread layout store and sync."""
+"""Public layout SSE formatting helpers."""
 
-from layout._tool import client_command_from_tool_output
+from layout.sse import client_command_from_tool_output
 
 __all__ = ["client_command_from_tool_output"]

@@ -6,9 +6,11 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from api.routes.users import router as users_router
+from api.routes.tool_status import router as tool_status_router
 
 router = APIRouter(prefix="/v1", tags=["v1"])
 router.include_router(users_router)
+router.include_router(tool_status_router)
 
 
 class HealthResponse(BaseModel):

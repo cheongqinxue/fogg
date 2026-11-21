@@ -15,7 +15,7 @@ from gmaps.errors import GmapsQuotaExceededError, GoogleMapsApiError
 from gmaps.quota.caps import SKU_FREE_CAP
 from gmaps.quota.store import RedisUsageStore
 from gmaps.quota.types import BillableEvent
-from agent_utils.redis_client import set_async_redis_client_for_tests
+from utils.redis_client import set_async_redis_client_for_tests
 from gmaps.requests import (
     PlacesAutocompleteRequest,
     PlacesGetRequest,
@@ -37,7 +37,8 @@ from gmaps.requests.base import (
     requests_base_max_retries,
 )
 from gmaps.response_cache import build_cache_key
-from gmaps.settings import reset_usage_store_for_tests
+from utils.settings import get_settings
+from gmaps.quota.store import reset_usage_store_for_tests
 
 BASE_LOGGER = "gmaps.requests.base"
 
@@ -45,7 +46,7 @@ BASE_LOGGER = "gmaps.requests.base"
 @pytest.mark.asyncio
 async def test_text_search_circle_restriction_filters_outside_and_requests_location(monkeypatch):
     import json
-    from master_agt.tools import places_text_search
+    from gmaps.tools import places_text_search
     from gmaps.requests.search_fields import TEXT_SEARCH_PRO_MASK
     from gmaps.requests.places import PlacesTextSearchRequest
 
@@ -65,6 +66,7 @@ async def test_text_search_circle_restriction_filters_outside_and_requests_locat
         await places_text_search.ainvoke(
             {
                 "text_query": "ski resorts",
+                "priority": 1,
                 "area": {
                     "latitude": 36.6513,
                     "longitude": 138.181,
@@ -81,7 +83,7 @@ async def test_text_search_circle_restriction_filters_outside_and_requests_locat
 
 @pytest.mark.asyncio
 async def test_agent_search_tools_use_pro_masks(monkeypatch):
-    from master_agt.tools import places_search_nearby, places_text_search
+    from gmaps.tools import places_search_nearby, places_text_search
     from gmaps.requests.places import PlacesSearchNearbyRequest, PlacesTextSearchRequest
     from gmaps.requests.search_fields import NEARBY_SEARCH_PRO_MASK, TEXT_SEARCH_PRO_MASK
 
@@ -95,9 +97,15 @@ async def test_agent_search_tools_use_pro_masks(monkeypatch):
     monkeypatch.setattr(PlacesSearchNearbyRequest, "call", fake_call)
     assert "field_mask" not in places_text_search.args
     assert "field_mask" not in places_search_nearby.args
-    await places_text_search.ainvoke({"text_query": "coffee"})
+    await places_text_search.ainvoke({"text_query": "coffee", "priority": 1})
     await places_search_nearby.ainvoke(
-        {"latitude": 36.65, "longitude": 138.18, "radius_meters": 5000, "included_types": ["cafe"]}
+        {
+            "latitude": 36.65,
+            "longitude": 138.18,
+            "radius_meters": 5000,
+            "included_types": ["cafe"],
+            "priority": 1,
+        }
     )
     assert [request.field_mask for request in captured] == [
         TEXT_SEARCH_PRO_MASK,
@@ -124,7 +132,8 @@ async def test_agent_search_tools_use_pro_masks(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_all_agent_tools_hide_masks_and_use_code_owned_fields(monkeypatch):
-    from master_agt.tools import get_tools, places_get, routes_compute, routes_compute_matrix
+    from master.tools import get_tools
+    from gmaps.tools import places_get, routes_compute, routes_compute_matrix
     from gmaps.requests.places import PlacesGetRequest
     from gmaps.requests.route_fields import MATRIX_MASK, ROUTE_MASK, ROUTE_OPTIMIZED_ORDER_FIELD
     from gmaps.requests.search_fields import PLACE_DETAILS_PRO_MASK
@@ -139,13 +148,20 @@ async def test_all_agent_tools_hide_masks_and_use_code_owned_fields(monkeypatch)
     for cls in (PlacesGetRequest, RoutesComputeRoutesRequest, RoutesComputeRouteMatrixRequest):
         monkeypatch.setattr(cls, "call", fake_call)
     assert all("field_mask" not in tool.args for tool in get_tools())
-    await places_get.ainvoke({"place_id": "sample"})
+    await places_get.ainvoke({"place_id": "sample", "priority": 1})
     waypoint = {"latitude": 36.65, "longitude": 138.18}
-    await routes_compute.ainvoke({"origin": waypoint, "destination": waypoint})
+    await routes_compute.ainvoke({"origin": waypoint, "destination": waypoint, "priority": 1})
     await routes_compute.ainvoke(
-        {"origin": waypoint, "destination": waypoint, "optimize_waypoint_order": True}
+        {
+            "origin": waypoint,
+            "destination": waypoint,
+            "optimize_waypoint_order": True,
+            "priority": 1,
+        }
     )
-    await routes_compute_matrix.ainvoke({"origins": [waypoint], "destinations": [waypoint]})
+    await routes_compute_matrix.ainvoke(
+        {"origins": [waypoint], "destinations": [waypoint], "priority": 1}
+    )
     assert [item.field_mask for item in captured] == [
         PLACE_DETAILS_PRO_MASK,
         ROUTE_MASK,
@@ -172,14 +188,13 @@ async def test_all_agent_tools_hide_masks_and_use_code_owned_fields(monkeypatch)
 
 def test_maps_cache_and_quota_use_shared_redis_url(monkeypatch):
     from gmaps import response_cache
-    from gmaps.settings import get_settings
 
     reset_usage_store_for_tests()
     monkeypatch.setenv("REDIS_URL", "redis://localhost:16379/9")
     monkeypatch.setenv("GMAPS_REDIS_URL", "redis://localhost:6379/0")
     captured = []
     monkeypatch.setattr(
-        "agent_utils.redis_client.get_async_redis_client",
+        "utils.redis_client.get_async_redis_client",
         lambda url: captured.append(url) or object(),
     )
     try:

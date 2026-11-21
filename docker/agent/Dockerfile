@@ -10,8 +10,8 @@ COPY pyproject.toml uv.lock README.md ./
 COPY agent/src/gmaps ./agent/src/gmaps
 COPY agent/src/layout ./agent/src/layout
 COPY agent/src/api ./agent/src/api
-COPY agent/src/agent_utils ./agent/src/agent_utils
-COPY agent/src/master_agt ./agent/src/master_agt
+COPY agent/src/utils ./agent/src/utils
+COPY agent/src/master ./agent/src/master
 
 RUN uv sync --frozen --no-dev
 
